@@ -380,6 +380,77 @@ function calculateAuraScore(signals) {
     return Math.round(finalScore * 10); // /100 scale
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Aura Breakdown (0–10 per category)
+// ===========================================================
+
+function calculateAuraBreakdown(signals) {
+    const {
+        avgIMDb,
+        consistency,
+        awards,
+        boxOffice,
+        roi,
+        hitRatio,
+        trend,
+        advancedConsistency
+    } = signals;
+
+    // 🎬 QUALITY
+    const quality =
+        ((avgIMDb || 0) * 0.7) +
+        ((consistency !== null ? Math.max(0, 10 - consistency) : 0) * 0.3);
+
+    // 💰 BUSINESS
+    const boxOfficeScore = boxOffice?.combined
+        ? Math.min(boxOffice.combined / 10000000, 10)
+        : 0;
+
+    const roiScore = roi !== null
+        ? Math.min(roi / 50, 10)
+        : 0;
+
+    const hitScore = hitRatio !== null
+        ? hitRatio * 10
+        : 0;
+
+    const business = (boxOfficeScore + roiScore + hitScore) / 3;
+
+    // 🏆 RECOGNITION
+    const recognition = awards
+        ? Math.min(Math.log10(awards + 1) * 3, 10)
+        : 0;
+
+    // 🔥 MOMENTUM
+    const momentum = trend || 0;
+
+    // ⚖️ STABILITY
+    let stability = 0;
+
+    if (advancedConsistency) {
+        const rev = advancedConsistency.revenue_consistency;
+        const roiC = advancedConsistency.roi_consistency;
+
+        const revScore = rev !== null
+            ? Math.max(0, 10 - (rev / 10000000))
+            : 0;
+
+        const roiScore = roiC !== null
+            ? Math.max(0, 10 - (roiC / 50))
+            : 0;
+
+        stability = (revScore + roiScore) / 2;
+    }
+
+    return {
+        quality: parseFloat(quality.toFixed(2)),
+        business: parseFloat(business.toFixed(2)),
+        recognition: parseFloat(recognition.toFixed(2)),
+        momentum: parseFloat(momentum.toFixed(2)),
+        stability: parseFloat(stability.toFixed(2))
+    };
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
@@ -390,5 +461,6 @@ module.exports = {
     calculateHitRatio,
     calculateROIEfficiency,
     calculateRatingGap,
-    calculateAdvancedConsistency
+    calculateAdvancedConsistency,
+    calculateAuraBreakdown
 };

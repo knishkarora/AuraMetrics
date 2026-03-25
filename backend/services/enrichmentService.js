@@ -1,6 +1,6 @@
 const { getTMDBData } = require("./tmdbService");
 const { getMovieDetails } = require("./omdbService");
-const { calculateAverageIMDbRating, calculateRatingConsistency, calculateAwardsScore, calculateBoxOfficeStrength, calculateAuraScore, calculateTrendScore, calculateHitRatio, calculateROIEfficiency, calculateRatingGap, calculateAdvancedConsistency } = require("./signalService");
+const { calculateAverageIMDbRating, calculateRatingConsistency, calculateAwardsScore, calculateBoxOfficeStrength, calculateAuraScore, calculateTrendScore, calculateHitRatio, calculateROIEfficiency, calculateRatingGap, calculateAdvancedConsistency, calculateAuraBreakdown } = require("./signalService");
 
 // ===========================================================
 // 🔹 FUNCTION: Enrich TMDB recent_movies with OMDb data
@@ -55,6 +55,16 @@ async function getEnrichedActorData(actorName) {
         const roiEfficiency = calculateROIEfficiency(enrichedMovies);
         const ratingGap = calculateRatingGap(enrichedMovies);
         const advancedConsistency = calculateAdvancedConsistency(enrichedMovies);
+        const auraBreakdown = calculateAuraBreakdown({
+            avgIMDb: avgIMDbRating,
+            consistency: consistencyScore,
+            awards: awardsScore,
+            boxOffice: boxOfficeStrength,
+            roi: roiEfficiency,
+            hitRatio: hitRatio,
+            trend: trendScore,
+            advancedConsistency: advancedConsistency
+        });
 
         const auraScore = calculateAuraScore({
             avgIMDb: avgIMDbRating,
@@ -90,7 +100,8 @@ async function getEnrichedActorData(actorName) {
                 hit_ratio: hitRatio,
                 roi_efficiency: roiEfficiency,
                 rating_gap: ratingGap,
-                advanced_consistency: advancedConsistency
+                advanced_consistency: advancedConsistency,
+                aura_breakdown: auraBreakdown
             },
 
             // 🔹 Enriched movies
