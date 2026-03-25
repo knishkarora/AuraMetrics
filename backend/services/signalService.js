@@ -21,4 +21,38 @@ function calculateAverageIMDbRating(movies) {
     return parseFloat((total / count).toFixed(2));
 }
 
-module.exports = { calculateAverageIMDbRating };
+// ===========================================================
+// 🔹 FUNCTION: Calculate rating consistency (standard deviation)
+// Lower value = more consistent
+// ===========================================================
+
+function calculateRatingConsistency(movies) {
+    const ratings = [];
+
+    // 🔹 Collect valid IMDb ratings
+    for (let movie of movies) {
+        if (movie.omdb && movie.omdb.imdbRating !== null) {
+            ratings.push(movie.omdb.imdbRating);
+        }
+    }
+
+    if (ratings.length === 0) return null;
+
+    // 🔹 Calculate mean
+    const mean = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+
+    // 🔹 Calculate variance
+    const variance = ratings.reduce((sum, rating) => {
+        return sum + Math.pow(rating - mean, 2);
+    }, 0) / ratings.length;
+
+    // 🔹 Standard deviation (consistency score)
+    const stdDev = Math.sqrt(variance);
+
+    return parseFloat(stdDev.toFixed(2));
+}
+
+module.exports = {
+    calculateAverageIMDbRating,
+    calculateRatingConsistency
+};

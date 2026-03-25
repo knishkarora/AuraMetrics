@@ -1,6 +1,6 @@
 const { getTMDBData } = require("./tmdbService");
 const { getMovieDetails } = require("./omdbService");
-const { calculateAverageIMDbRating } = require("./signalService");
+const { calculateAverageIMDbRating, calculateRatingConsistency } = require("./signalService");
 
 // ===========================================================
 // 🔹 FUNCTION: Enrich TMDB recent_movies with OMDb data
@@ -47,6 +47,7 @@ async function getEnrichedActorData(actorName) {
         // ===========================================================
 
         const avgIMDbRating = calculateAverageIMDbRating(enrichedMovies);
+        const consistencyScore = calculateRatingConsistency(enrichedMovies);
 
         // 🔹 Step 4: Return structured response
         return {
@@ -62,7 +63,8 @@ async function getEnrichedActorData(actorName) {
                 box_office_trend: tmdbData.box_office_trend,
                 commercial_reliability: tmdbData.commercial_reliability,
                 tmdb_popularity: tmdbData.tmdb_popularity,
-                avg_imdb_rating: avgIMDbRating
+                avg_imdb_rating: avgIMDbRating,
+                rating_consistency: consistencyScore
             },
 
             // 🔹 Enriched movies
