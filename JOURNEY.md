@@ -238,7 +238,217 @@ The most satisfying part? Designing **my own formulas**:
 - `combined_engagement_rate` weighted by platform reach
 - `reels_trend` comparing recent vs older performance
 
-These aren't from any tutorial. They came from thinking about the problem properly.
+---
+
+## 🎬 Phase 1.4 — TMDB Joins the Party
+
+📅 **Day 3 — Getting Serious**
+
+With Instagram done, it was time to bring in the third data source — **TMDB** for actor profiles and box office data.
+
+Got the API key set up, wrote the service — clean, structured, felt good.
+
+Then hit the wall. 🧱
+
+**The Jio Block**
+```
+AggregateError
+TLSSocket error
+ERR_CONNECTION_TIMED_OUT
+```
+
+Jio was blocking `api.themoviedb.org` at ISP level. Not just the website — the API too.
+
+Tried everything:
+- Changed DNS to `8.8.8.8` ❌
+- Tried Cloudflare `1.1.1.1` ❌
+- Mobile hotspot ❌
+- Windscribe VPN site itself was blocked 😂
+
+Finally got a VPN working — connected — and immediately:
+```json
+{
+  "name": "Shah Rukh Khan",
+  "biography": "Shah Rukh Khan, also known as SRK...",
+  "recent_movies": [...],
+  "avg_box_office_revenue": 35745000,
+  "commercial_reliability": 40,
+  "tmdb_popularity": 7.155
+}
+```
+
+Real SRK data. Worth the fight. 🎬
+
+![Terminal showing the TMDB success response](assets/journey/srk.png)
+
+**One honest note about TMDB:**
+Box office numbers for Bollywood are incomplete — TMDB doesn't have reliable Indian revenue data. Noted it, flagged it, moved on. Grok will fix this in Phase 3 via web search.
+
+---
+
+## 📊 Phase 1.5 — OMDb Makes the Data Smarter
+
+📅 **Day 3 — Same Night**
+
+TMDB gives filmography. But IMDb ratings and awards data? That's OMDb's territory.
+
+Built `omdbService.js` — fetched:
+- IMDb Rating
+- Awards (wins + nominations)
+- Box office (US reported)
+- Metascore
+
+Then built `enrichmentService.js` — merged TMDB + OMDb per movie:
+```
+TMDB movie → find on OMDb → merge → enriched movie object
+```
+
+**Fixes along the way:**
+- `movies` was named `recent_movies` in the object → fixed field reference
+- Movies with `revenue === 0` were polluting averages → skipped them
+- `imdbRating` came as string `"7.5"` → normalized to number
+- OMDb calls only trigger when needed → no wasted quota
+
+---
+
+## 🧠 Phase 2 — The Signal Engine
+
+📅 **This is where it got real**
+
+Raw data is just numbers. Signals are what those numbers *mean*.
+
+Built 9+ signals from the enriched actor data:
+
+| Signal | What It Measures |
+|---|---|
+| `avg_imdb_rating` | Overall content quality |
+| `rating_consistency` | Std deviation — is quality stable or all over the place? |
+| `awards_score` | wins × 2 + nominations |
+| `box_office_strength` | Mean + median + combined (not just average) |
+| `trend_score` | TMDB popularity + recent movie momentum |
+| `hit_ratio` | ROI > 100% OR revenue > 1.5× budget |
+| `roi_efficiency` | Average return on investment |
+| `rating_gap` | TMDB rating vs IMDb rating — trust signal |
+| `revenue_consistency` | How stable is their box office performance? |
+
+**The hit ratio story 🎯**
+
+First version of hit ratio was giving everyone `1.0` — basically calling every movie a hit.
+
+Fixed it with a stricter formula:
+```
+Hit = ROI > 100% OR revenue > 1.5× budget
+```
+
+Much more realistic. Some actors dropped significantly. That's the point.
+
+> 📸 **Suggested image:** Your signal engine output JSON in browser or terminal
+
+![signal engine output JSON in browser](assets/journey/signals.png)
+
+---
+
+## ⭐ Phase 3 — The Aura Score
+
+📅 **The moment it became a product**
+
+All those signals needed to collapse into one number.
+
+**Aura Score v1** — basic weighted average. Worked but felt flat.
+
+**Aura Score v2** — upgraded to 5 dimensions:
+```
+Quality      → content quality signals
+Business     → commercial performance
+Recognition  → awards + critical acclaim  
+Momentum     → growth + trend direction
+Stability    → consistency across career
+```
+
+Each dimension normalized, weighted, combined → **Aura Score (0-100)**
+
+**The awards scaling fix 🔧**
+
+Raw award counts were dominating the score unfairly.
+Fixed with logarithmic scaling:
+```javascript
+log10(awards + 1) * 3
+```
+
+Now a person with 5 awards scores meaningfully higher than 1 award — but 500 awards doesn't make someone unrealistically perfect.
+
+---
+
+## 💡 Phase 4 — Explainability
+
+📅 **Making the score trustworthy**
+
+A score without explanation is just a number. Added `aura_breakdown`:
+```json
+{
+  "quality": 78,
+  "business": 62,
+  "recognition": 85,
+  "momentum": 71,
+  "stability": 69
+}
+```
+
+Now when someone asks *"why did SRK score 74?"* — you can show them exactly which dimension pulled it up or down.
+
+This is what separates AuraMetric from a calculator. It's an **explainable intelligence engine.**
+
+---
+
+## 🏗️ System Design Evolution
+
+**The biggest mindset shift of this project:**
+
+> *"I'm not building an API aggregator. I'm building a multi-domain intelligence engine."*
+
+The architecture locked into 4 clean layers:
+```
+Layer 1 → Data       (YouTube, Instagram, TMDB, OMDb)
+Layer 2 → Signals    (domain-specific calculations)  
+Layer 3 → AI Fusion  (Grok — cross platform intelligence)
+Layer 4 → Output     (Aura Score + breakdown + insights)
+```
+
+**Key rule:** AI layer never calls APIs directly. Data flows one way — up.
+
+---
+
+## 📊 Where Things Stand Now
+
+| Stage | Status | What Was Built |
+|---|---|---|
+| 1.1 Backend Setup | ✅ Done | Express server, folder structure |
+| 1.2 YouTube API | ✅ Done | Channel stats, engagement, trends |
+| 1.3 Instagram API | ✅ Done | Posts, reels, derived metrics |
+| 1.4 TMDB API | ✅ Done | Actor profiles, box office, ROI |
+| 1.5 OMDb Integration | ✅ Done | IMDb ratings, awards, metascore |
+| 1.6 Enrichment Layer | ✅ Done | TMDB + OMDb merged per movie |
+| Signal Engine | ✅ Done | 9+ signals, normalized output |
+| Aura Score v2 | ✅ Done | 5-dimension scoring system |
+| Explainability | ✅ Done | aura_breakdown per dimension |
+| YouTube Signals | 🔜 Next | Influencer signal pipeline |
+| Grok AI Layer | 🔜 Soon | Cross-platform AI fusion |
+| Frontend | 🔜 Soon | React dashboard |
+
+---
+
+## 💭 Honest Reflections So Far
+
+The hardest part wasn't the code. It was **Jio blocking everything** — TMDB, VPN sites, DNS — felt like the internet itself was working against me. Got through it anyway.
+
+The most satisfying part? The signal engine. Designing formulas that actually *mean* something:
+
+- `hit_ratio` with a real threshold instead of a fake one
+- `rating_consistency` using standard deviation like a real data scientist
+- `awards_score` with log scaling so it doesn't break the math
+- `aura_breakdown` so the score is never a black box
+
+None of this came from a tutorial. It came from thinking about what the data actually represents.
 
 That's what makes AuraMetric feel different. 💪
 
