@@ -17,6 +17,13 @@ router.get('/test/youtube', async (req, res) => {
   res.json(data);
 });
 
+const { getTMDBData } = require('../services/tmdbService');
+
+router.get('/test/tmdb', async (req, res) => {
+  const { name } = req.query;
+  const data = await getTMDBData(name);
+  res.json(data);
+});
 // Instagram test route
 router.get('/test/instagram', async (req, res) => {
   const { name } = req.query;
