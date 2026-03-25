@@ -247,6 +247,35 @@ function calculateROIEfficiency(movies) {
     return parseFloat(avgROI.toFixed(2));
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate audience vs critic gap
+// ===========================================================
+
+function calculateRatingGap(movies) {
+    let totalGap = 0;
+    let count = 0;
+
+    for (let movie of movies) {
+
+        if (
+            movie.vote_average && 
+            movie.omdb && 
+            movie.omdb.imdbRating !== null
+        ) {
+            const gap = Math.abs(movie.vote_average - movie.omdb.imdbRating);
+
+            totalGap += gap;
+            count++;
+        }
+    }
+
+    if (count === 0) return null;
+
+    const avgGap = totalGap / count;
+
+    return parseFloat(avgGap.toFixed(2));
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
@@ -255,5 +284,6 @@ module.exports = {
     calculateAuraScore,
     calculateTrendScore,
     calculateHitRatio,
-    calculateROIEfficiency
+    calculateROIEfficiency,
+    calculateRatingGap
 };
