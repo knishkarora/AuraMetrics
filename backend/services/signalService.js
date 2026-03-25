@@ -52,7 +52,36 @@ function calculateRatingConsistency(movies) {
     return parseFloat(stdDev.toFixed(2));
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate awards score
+// Formula: (wins * 2) + nominations
+// ===========================================================
+
+function calculateAwardsScore(movies) {
+    let totalScore = 0;
+
+    for (let movie of movies) {
+
+        if (movie.omdb && movie.omdb.awards) {
+            const awardsText = movie.omdb.awards;
+
+            // 🔹 Extract wins and nominations using regex
+            const winsMatch = awardsText.match(/(\d+)\s+wins?/i);
+            const nomsMatch = awardsText.match(/(\d+)\s+nominations?/i);
+
+            const wins = winsMatch ? parseInt(winsMatch[1]) : 0;
+            const nominations = nomsMatch ? parseInt(nomsMatch[1]) : 0;
+
+            // 🔹 Weighted score
+            totalScore += (wins * 2) + nominations;
+        }
+    }
+
+    return totalScore;
+}
+
 module.exports = {
     calculateAverageIMDbRating,
-    calculateRatingConsistency
+    calculateRatingConsistency,
+    calculateAwardsScore
 };
