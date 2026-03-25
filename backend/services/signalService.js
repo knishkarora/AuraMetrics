@@ -122,9 +122,49 @@ function calculateBoxOfficeStrength(movies) {
     };
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate Aura Score (0–100)
+// ===========================================================
+
+function calculateAuraScore(signals) {
+    const {
+        avgIMDb,
+        consistency,
+        awards,
+        boxOffice
+    } = signals;
+
+    // 🔹 Normalize IMDb (already out of 10)
+    const imdbScore = avgIMDb ? avgIMDb : 0;
+
+    // 🔹 Consistency → lower is better → invert
+    const consistencyScore = consistency !== null
+        ? Math.max(0, 10 - consistency)
+        : 0;
+
+    // 🔹 Awards → scale down (rough normalization)
+    const awardsScore = awards ? Math.min(awards / 50, 10) : 0;
+
+    // 🔹 Box office → scale (assume 100M ≈ 10 score)
+    const boxOfficeScore = boxOffice && boxOffice.combined
+        ? Math.min(boxOffice.combined / 10000000, 10)
+        : 0;
+
+    // 🔹 Final weighted score
+    const finalScore =
+        (imdbScore * 0.3) +
+        (consistencyScore * 0.2) +
+        (awardsScore * 0.2) +
+        (boxOfficeScore * 0.3);
+
+    // Convert to /100
+    return Math.round(finalScore * 10);
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
     calculateAwardsScore,
-    calculateBoxOfficeStrength
+    calculateBoxOfficeStrength,
+    calculateAuraScore
 };
