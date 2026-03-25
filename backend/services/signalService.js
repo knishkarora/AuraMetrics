@@ -80,8 +80,51 @@ function calculateAwardsScore(movies) {
     return totalScore;
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate box office metrics
+// Returns mean, median, and combined score
+// ===========================================================
+
+function calculateBoxOfficeStrength(movies) {
+    const revenues = [];
+
+    // 🔹 Collect valid revenues
+    for (let movie of movies) {
+        if (movie.revenue && movie.revenue > 0) {
+            revenues.push(movie.revenue);
+        }
+    }
+
+    if (revenues.length === 0) return null;
+
+    // 🔹 MEAN (average)
+    const mean = revenues.reduce((a, b) => a + b, 0) / revenues.length;
+
+    // 🔹 MEDIAN (consistency)
+    const sorted = [...revenues].sort((a, b) => a - b);
+    let median;
+
+    const mid = Math.floor(sorted.length / 2);
+
+    if (sorted.length % 2 === 0) {
+        median = (sorted[mid - 1] + sorted[mid]) / 2;
+    } else {
+        median = sorted[mid];
+    }
+
+    // 🔹 COMBINED SCORE (weighted)
+    const combined = (median * 0.7) + (mean * 0.3);
+
+    return {
+        mean: Math.round(mean),
+        median: Math.round(median),
+        combined: Math.round(combined)
+    };
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
-    calculateAwardsScore
+    calculateAwardsScore,
+    calculateBoxOfficeStrength
 };
