@@ -169,8 +169,8 @@ function calculateHitRatio(movies) {
 
             // 🔹 Hit conditions
             if (
-                (movie.roi && movie.roi > 50) ||
-                (movie.revenue > movie.budget)
+                (movie.roi && movie.roi > 100) ||   // stricter ROI
+                (movie.revenue > movie.budget * 1.5) // real profit margin
             ) {
                 hits++;
             }
@@ -333,7 +333,7 @@ function calculateAuraScore(signals) {
     // =========================
 
     const awardsScore = awards
-        ? Math.min(awards / 50, 10)
+        ? Math.min(Math.log10(awards + 1) * 3, 10)
         : 0;
 
     // =========================

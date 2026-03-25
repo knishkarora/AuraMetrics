@@ -50,6 +50,12 @@ async function getEnrichedActorData(actorName) {
         const consistencyScore = calculateRatingConsistency(enrichedMovies);
         const awardsScore = calculateAwardsScore(enrichedMovies);
         const boxOfficeStrength = calculateBoxOfficeStrength(enrichedMovies);
+        const trendScore = calculateTrendScore(tmdbData, enrichedMovies);
+        const hitRatio = calculateHitRatio(enrichedMovies);
+        const roiEfficiency = calculateROIEfficiency(enrichedMovies);
+        const ratingGap = calculateRatingGap(enrichedMovies);
+        const advancedConsistency = calculateAdvancedConsistency(enrichedMovies);
+
         const auraScore = calculateAuraScore({
             avgIMDb: avgIMDbRating,
             consistency: consistencyScore,
@@ -60,11 +66,6 @@ async function getEnrichedActorData(actorName) {
             trend: trendScore,
             advancedConsistency: advancedConsistency
         });
-        const trendScore = calculateTrendScore(tmdbData, enrichedMovies);
-        const hitRatio = calculateHitRatio(enrichedMovies);
-        const roiEfficiency = calculateROIEfficiency(enrichedMovies);
-        const ratingGap = calculateRatingGap(enrichedMovies);
-        const advancedConsistency = calculateAdvancedConsistency(enrichedMovies);
 
         // 🔹 Step 4: Return structured response
         return {
