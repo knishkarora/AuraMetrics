@@ -223,6 +223,30 @@ function calculateHitRatio(movies) {
     return parseFloat(ratio.toFixed(2)); // e.g. 0.6
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate ROI efficiency
+// ===========================================================
+
+function calculateROIEfficiency(movies) {
+    let totalROI = 0;
+    let count = 0;
+
+    for (let movie of movies) {
+
+        // 🔹 Only consider valid ROI
+        if (movie.roi !== null && movie.roi !== undefined) {
+            totalROI += movie.roi;
+            count++;
+        }
+    }
+
+    if (count === 0) return null;
+
+    const avgROI = totalROI / count;
+
+    return parseFloat(avgROI.toFixed(2));
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
@@ -230,5 +254,6 @@ module.exports = {
     calculateBoxOfficeStrength,
     calculateAuraScore,
     calculateTrendScore,
-    calculateHitRatio
+    calculateHitRatio,
+    calculateROIEfficiency
 };
