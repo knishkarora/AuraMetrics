@@ -192,11 +192,43 @@ function calculateTrendScore(tmdbData, movies) {
     return parseFloat(normalized.toFixed(2));
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate hit ratio
+// ===========================================================
+
+function calculateHitRatio(movies) {
+    let hits = 0;
+    let total = 0;
+
+    for (let movie of movies) {
+
+        // Only consider valid movies
+        if (movie.revenue && movie.budget) {
+            total++;
+
+            // 🔹 Hit conditions
+            if (
+                (movie.roi && movie.roi > 50) ||
+                (movie.revenue > movie.budget)
+            ) {
+                hits++;
+            }
+        }
+    }
+
+    if (total === 0) return null;
+
+    const ratio = hits / total;
+
+    return parseFloat(ratio.toFixed(2)); // e.g. 0.6
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
     calculateAwardsScore,
     calculateBoxOfficeStrength,
     calculateAuraScore,
-    calculateTrendScore
+    calculateTrendScore,
+    calculateHitRatio
 };
