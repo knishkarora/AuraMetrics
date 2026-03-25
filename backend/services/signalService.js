@@ -161,10 +161,42 @@ function calculateAuraScore(signals) {
     return Math.round(finalScore * 10);
 }
 
+// ===========================================================
+// 🔹 FUNCTION: Calculate trend score (0–10)
+// ===========================================================
+
+function calculateTrendScore(tmdbData, movies) {
+
+    // 🔹 Base: actor popularity
+    const basePopularity = tmdbData.tmdb_popularity || 0;
+
+    // 🔹 Recent movies popularity
+    let totalPopularity = 0;
+    let count = 0;
+
+    for (let movie of movies) {
+        if (movie.popularity) {
+            totalPopularity += movie.popularity;
+            count++;
+        }
+    }
+
+    const avgMoviePopularity = count > 0 ? totalPopularity / count : 0;
+
+    // 🔹 Combine both (weighted)
+    const rawScore = (basePopularity * 0.6) + (avgMoviePopularity * 0.4);
+
+    // 🔹 Normalize to 0–10 (simple cap)
+    const normalized = Math.min(rawScore, 10);
+
+    return parseFloat(normalized.toFixed(2));
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
     calculateAwardsScore,
     calculateBoxOfficeStrength,
-    calculateAuraScore
+    calculateAuraScore,
+    calculateTrendScore
 };
