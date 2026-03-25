@@ -54,7 +54,11 @@ async function getEnrichedActorData(actorName) {
             avgIMDb: avgIMDbRating,
             consistency: consistencyScore,
             awards: awardsScore,
-            boxOffice: boxOfficeStrength
+            boxOffice: boxOfficeStrength,
+            roi: roiEfficiency,
+            hitRatio: hitRatio,
+            trend: trendScore,
+            advancedConsistency: advancedConsistency
         });
         const trendScore = calculateTrendScore(tmdbData, enrichedMovies);
         const hitRatio = calculateHitRatio(enrichedMovies);

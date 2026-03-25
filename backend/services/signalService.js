@@ -123,45 +123,6 @@ function calculateBoxOfficeStrength(movies) {
 }
 
 // ===========================================================
-// 🔹 FUNCTION: Calculate Aura Score (0–100)
-// ===========================================================
-
-function calculateAuraScore(signals) {
-    const {
-        avgIMDb,
-        consistency,
-        awards,
-        boxOffice
-    } = signals;
-
-    // 🔹 Normalize IMDb (already out of 10)
-    const imdbScore = avgIMDb ? avgIMDb : 0;
-
-    // 🔹 Consistency → lower is better → invert
-    const consistencyScore = consistency !== null
-        ? Math.max(0, 10 - consistency)
-        : 0;
-
-    // 🔹 Awards → scale down (rough normalization)
-    const awardsScore = awards ? Math.min(awards / 50, 10) : 0;
-
-    // 🔹 Box office → scale (assume 100M ≈ 10 score)
-    const boxOfficeScore = boxOffice && boxOffice.combined
-        ? Math.min(boxOffice.combined / 10000000, 10)
-        : 0;
-
-    // 🔹 Final weighted score
-    const finalScore =
-        (imdbScore * 0.3) +
-        (consistencyScore * 0.2) +
-        (awardsScore * 0.2) +
-        (boxOfficeScore * 0.3);
-
-    // Convert to /100
-    return Math.round(finalScore * 10);
-}
-
-// ===========================================================
 // 🔹 FUNCTION: Calculate trend score (0–10)
 // ===========================================================
 
@@ -323,6 +284,100 @@ function calculateAdvancedConsistency(movies) {
             ? parseFloat(roiStd.toFixed(2)) 
             : null
     };
+}
+
+// ===========================================================
+// 🔹 FUNCTION: Advanced Aura Score 
+// ===========================================================
+
+function calculateAuraScore(signals) {
+    const {
+        avgIMDb,
+        consistency,
+        awards,
+        boxOffice,
+        roi,
+        hitRatio,
+        trend,
+        advancedConsistency
+    } = signals;
+
+    // =========================
+    // 🎬 QUALITY
+    // =========================
+
+    const imdbScore = avgIMDb || 0;
+
+    const consistencyScore = consistency !== null
+        ? Math.max(0, 10 - consistency)
+        : 0;
+
+    // =========================
+    // 💰 BUSINESS
+    // =========================
+
+    const boxOfficeScore = boxOffice && boxOffice.combined
+        ? Math.min(boxOffice.combined / 10000000, 10)
+        : 0;
+
+    const roiScore = roi !== null
+        ? Math.min(roi / 50, 10)
+        : 0;
+
+    const hitScore = hitRatio !== null
+        ? hitRatio * 10
+        : 0;
+
+    // =========================
+    // 🏆 RECOGNITION
+    // =========================
+
+    const awardsScore = awards
+        ? Math.min(awards / 50, 10)
+        : 0;
+
+    // =========================
+    // 🔥 MOMENTUM
+    // =========================
+
+    const trendScore = trend || 0;
+
+    // =========================
+    // ⚖️ STABILITY
+    // =========================
+
+    let stabilityScore = 0;
+
+    if (advancedConsistency) {
+        const revCons = advancedConsistency.revenue_consistency;
+        const roiCons = advancedConsistency.roi_consistency;
+
+        const revScore = revCons !== null
+            ? Math.max(0, 10 - (revCons / 10000000))
+            : 0;
+
+        const roiStability = roiCons !== null
+            ? Math.max(0, 10 - (roiCons / 50))
+            : 0;
+
+        stabilityScore = (revScore + roiStability) / 2;
+    }
+
+    // =========================
+    // 🧠 FINAL WEIGHTING
+    // =========================
+
+    const finalScore =
+        (imdbScore * 0.2) +
+        (consistencyScore * 0.1) +
+        (boxOfficeScore * 0.15) +
+        (roiScore * 0.1) +
+        (hitScore * 0.1) +
+        (awardsScore * 0.1) +
+        (trendScore * 0.1) +
+        (stabilityScore * 0.15);
+
+    return Math.round(finalScore * 10); // /100 scale
 }
 
 module.exports = {
