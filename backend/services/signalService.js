@@ -276,6 +276,55 @@ function calculateRatingGap(movies) {
     return parseFloat(avgGap.toFixed(2));
 }
 
+// ===========================================================
+// 🔹 HELPER: Calculate standard deviation
+// ===========================================================
+
+function calculateStdDev(values) {
+    if (values.length === 0) return null;
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+    const variance = values.reduce((sum, val) => {
+        return sum + Math.pow(val - mean, 2);
+    }, 0) / values.length;
+
+    return Math.sqrt(variance);
+}
+
+// ===========================================================
+// 🔹 FUNCTION: Advanced consistency (revenue + ROI)
+// ===========================================================
+
+function calculateAdvancedConsistency(movies) {
+    const revenues = [];
+    const rois = [];
+
+    for (let movie of movies) {
+
+        if (movie.revenue && movie.revenue > 0) {
+            revenues.push(movie.revenue);
+        }
+
+        if (movie.roi !== null && movie.roi !== undefined) {
+            rois.push(movie.roi);
+        }
+    }
+
+    const revenueStd = calculateStdDev(revenues);
+    const roiStd = calculateStdDev(rois);
+
+    return {
+        revenue_consistency: revenueStd !== null 
+            ? parseFloat(revenueStd.toFixed(2)) 
+            : null,
+
+        roi_consistency: roiStd !== null 
+            ? parseFloat(roiStd.toFixed(2)) 
+            : null
+    };
+}
+
 module.exports = {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
@@ -285,5 +334,6 @@ module.exports = {
     calculateTrendScore,
     calculateHitRatio,
     calculateROIEfficiency,
-    calculateRatingGap
+    calculateRatingGap,
+    calculateAdvancedConsistency
 };
