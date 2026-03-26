@@ -6,6 +6,7 @@ const { getInstagramData }  = require('../services/instagramService');
 const { getTMDBData }       = require('../services/tmdbService');
 const { getMovieDetails }   = require('../services/omdbService');
 const { getEnrichedActorData } = require('../services/enrichmentService');
+const { getSpotifyToken, getSpotifyArtistData } = require('../services/spotifyService');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -119,6 +120,19 @@ router.get('/test/enriched', async (req, res) => {
   }
 });
 
+// Spotify test route
+router.get('/test/spotify-token', async (req, res) => {
+  const token = await getSpotifyToken();
+  res.json({ token });
+});
 
+// Spotify artist test route
+router.get('/test/spotify', async (req, res) => {
+  const { name } = req.query;
+
+  const data = await getSpotifyArtistData(name);
+
+  res.json(data);
+});
 
 module.exports = router;
