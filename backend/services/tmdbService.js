@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { usdToInr } = require('../utils/currency');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const BASE_URL = 'https://api.themoviedb.org/3';
@@ -11,7 +12,7 @@ const BASE_URL = 'https://api.themoviedb.org/3';
 const searchPerson = async (name) => {
   const response = await axios.get(`${BASE_URL}/search/person`, {
     params: {
-      query:   name,
+      query: name,
       api_key: TMDB_API_KEY
     }
   });
@@ -21,10 +22,10 @@ const searchPerson = async (name) => {
 
   const person = results[0];
   return {
-    id:         person.id,
-    name:       person.name,
+    id: person.id,
+    name: person.name,
     popularity: person.popularity,
-    known_for:  person.known_for_department
+    known_for: person.known_for_department
   };
 };
 
@@ -37,13 +38,13 @@ const getPersonDetails = async (personId) => {
   if (!p) return null;
 
   return {
-    tmdb_id:         p.id,
-    imdb_id:         p.imdb_id        || null,
-    name:            p.name,
-    biography:       p.biography      || '',
-    birthday:        p.birthday       || null,
-    place_of_birth:  p.place_of_birth || null,
-    popularity:      p.popularity,
+    tmdb_id: p.id,
+    imdb_id: p.imdb_id || null,
+    name: p.name,
+    biography: p.biography || '',
+    birthday: p.birthday || null,
+    place_of_birth: p.place_of_birth || null,
+    popularity: p.popularity,
     profile_pic_url: p.profile_path
       ? `https://image.tmdb.org/t/p/w500${p.profile_path}`
       : null
@@ -77,17 +78,21 @@ const getBoxOfficeData = async (movies) => {
         });
 
         const m = response.data;
+        const roiValue = m.budget > 0
+          ? parseFloat(((m.revenue - m.budget) / m.budget * 100).toFixed(2))
+          : null;
+
         return {
-          title:        m.title,
+          title: m.title,
           release_date: m.release_date,
-          revenue:      m.revenue      || 0,
-          budget:       m.budget       || 0,
+          revenue_raw: m.revenue || 0,      // ← keep raw for calculations
+          budget_raw: m.budget || 0,       // ← keep raw for calculations
+          revenue: await usdToInr(m.revenue) || '₹0',  // ← display
+          budget: await usdToInr(m.budget) || '₹0',  // ← display
           vote_average: m.vote_average || 0,
-          vote_count:   m.vote_count   || 0,
-          popularity:   m.popularity   || 0,
-          roi: m.budget > 0
-            ? parseFloat(((m.revenue - m.budget) / m.budget * 100).toFixed(2))
-            : null
+          vote_count: m.vote_count || 0,
+          popularity: m.popularity || 0,
+          roi: roiValue
         };
       } catch {
         return null;
@@ -98,45 +103,53 @@ const getBoxOfficeData = async (movies) => {
   return movieDetails.filter(Boolean);
 };
 
-const calculateActorMetrics = (details, boxOffice) => {
+const calculateActorMetrics = async (details, boxOffice) => {
   const avg = (arr) => arr.length > 0
     ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length)
     : 0;
 
-  const moviesWithRevenue = boxOffice.filter(m => m.revenue > 0);
+  const moviesWithRevenue = boxOffice.filter(m => m.revenue_raw > 0);
+  console.log('Movies with revenue:', moviesWithRevenue.map(m => ({
+    title: m.title,
+    revenue_raw: m.revenue_raw
+  })));
 
-  const avgRevenue = avg(moviesWithRevenue.map(m => m.revenue));
-  const avgRating  = moviesWithRevenue.length > 0
+  const avgRevenue = avg(moviesWithRevenue.map(m => m.revenue_raw));
+  const avgRating = moviesWithRevenue.length > 0
     ? parseFloat((
-        moviesWithRevenue.reduce((a, m) => a + m.vote_average, 0)
-        / moviesWithRevenue.length
-      ).toFixed(2))
+      moviesWithRevenue.reduce((a, m) => a + m.vote_average, 0)
+      / moviesWithRevenue.length
+    ).toFixed(2))
     : 0;
 
-  const totalRevenue = moviesWithRevenue.reduce((a, m) => a + m.revenue, 0);
+  const totalRevenue = moviesWithRevenue.reduce((a, m) => a + m.revenue_raw, 0);
 
   // ─────────────────────────────────────────────
   // Box office trend: latest movie vs average
   // Above 1.0 = rising star | Below 1.0 = declining
   // ─────────────────────────────────────────────
   const boxOfficeTrend = avgRevenue > 0 && moviesWithRevenue.length > 0
-    ? parseFloat((moviesWithRevenue[0].revenue / avgRevenue).toFixed(2))
+    ? parseFloat((moviesWithRevenue[0].revenue_raw / avgRevenue).toFixed(2))
     : null;
 
   // Commercial reliability = % of movies that turned profit
-  const profitableMovies      = boxOffice.filter(m => m.roi !== null && m.roi > 0);
+  const profitableMovies = boxOffice.filter(m => m.roi !== null && m.roi > 0);
   const commercialReliability = boxOffice.length > 0
     ? parseFloat((profitableMovies.length / boxOffice.length * 100).toFixed(1))
     : 0;
-
+  console.log('avgRevenueUSD:', avgRevenue);
+  console.log('totalRevenueUSD:', totalRevenue);
+  console.log('moviesWithRevenue:', moviesWithRevenue.length);
   return {
-    total_movies:           details.popularity > 0 ? Math.round(details.popularity) : 0,
-    avg_box_office_revenue: avgRevenue,
-    total_box_office:       totalRevenue,
-    avg_audience_rating:    avgRating,
-    box_office_trend:       boxOfficeTrend,
+    total_movies: details.popularity > 0 ? Math.round(details.popularity) : 0,
+    avg_box_office_revenue_raw: avgRevenue,
+    total_box_office_raw: totalRevenue,
+    avg_box_office_revenue: await usdToInr(avgRevenue) || '₹0',
+    total_box_office: await usdToInr(totalRevenue) || '₹0',
+    avg_audience_rating: avgRating,
+    box_office_trend: boxOfficeTrend,
     commercial_reliability: commercialReliability,
-    tmdb_popularity:        details.popularity
+    tmdb_popularity: details.popularity
   };
 };
 
@@ -156,11 +169,11 @@ const getTMDBData = async (name) => {
     if (!details || !movies) return null;
 
     const boxOffice = await getBoxOfficeData(movies);
-    const metrics   = calculateActorMetrics(details, boxOffice);
+    const metrics = await calculateActorMetrics(details, boxOffice);
 
     return {
       ...details,
-      known_for:     personSearch.known_for,
+      known_for: personSearch.known_for,
       recent_movies: boxOffice,
       ...metrics
     };

@@ -85,6 +85,8 @@ async function getEnrichedActorData(actorName) {
             // Keep original TMDB insights (VERY IMPORTANT)
             insights: {
                 total_movies: tmdbData.total_movies,
+                avg_box_office_revenue_raw: tmdbData.avg_box_office_revenue_raw,
+                total_box_office_raw: tmdbData.total_box_office_raw,
                 avg_box_office_revenue: tmdbData.avg_box_office_revenue,
                 total_box_office: tmdbData.total_box_office,
                 avg_audience_rating: tmdbData.avg_audience_rating,
