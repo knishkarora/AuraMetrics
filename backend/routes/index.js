@@ -199,4 +199,15 @@ router.get('/test/ai', async (req, res) => {
   res.json(insights);
 });
 
+const { classifyPersonType } = require('../services/classifierService');
+
+router.get('/test/classify', async (req, res) => {
+    const { name } = req.query;
+
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const type = await classifyPersonType(name);
+    res.json({ name, type });
+});
+
 module.exports = router;
