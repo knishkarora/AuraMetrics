@@ -149,4 +149,54 @@ router.get('/test/spotify-signals', async (req, res) => {
   });
 });
 
+const { generateInsights } = require('../services/aiService');
+
+router.get('/test/ai', async (req, res) => {
+  const { name, type } = req.query;
+
+  // Mock profile + aura data for testing
+  // Replace with real aggregator data later
+  const mockProfileData = {
+    name: name || "Shah Rukh Khan",
+    type: type || "actor",
+    instagram: {
+      followers:               275000000,
+      post_engagement_rate:    3.53,
+      reels_avg_views:         56000000,
+      reels_trend:             1.52,
+      combined_engagement_rate: 6.07,
+      follower_following_ratio: 964971
+    },
+    youtube: null,
+    tmdb: {
+      recent_movies:           [{ title: "Dunki" }, { title: "Jawan" }],
+      avg_box_office_revenue:  400000000,
+      avg_audience_rating:     6.8,
+      box_office_trend:        1.2,
+      commercial_reliability:  80
+    },
+    spotify: null
+  };
+
+  const mockAuraData = {
+    aura_score:     84,
+    confidence:     91,
+    aura_breakdown: {
+      quality:     88,
+      business:    79,
+      recognition: 95,
+      momentum:    86,
+      stability:   81
+    },
+    signals: {
+      avg_imdb_rating:    7.2,
+      hit_ratio:          0.8,
+      roi_efficiency:     180
+    }
+  };
+
+  const insights = await generateInsights(mockProfileData, mockAuraData);
+  res.json(insights);
+});
+
 module.exports = router;
