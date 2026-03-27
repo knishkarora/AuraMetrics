@@ -8,6 +8,7 @@ const { getMovieDetails }   = require('../services/omdbService');
 const { getEnrichedActorData } = require('../services/enrichmentService');
 const { getSpotifyToken, getSpotifyArtistData } = require('../services/spotifyService');
 const { calculateSpotifySignals } = require('../services/spotifySignalService');
+const { calculateInfluencerSignals } = require('../services/influencerSignalService');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -210,4 +211,24 @@ router.get('/test/classify', async (req, res) => {
     res.json({ name, type });
 });
 
+
+router.get('/test/influencer-signals', async (req, res) => {
+    const { name } = req.query;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    // Fetch both platforms in parallel
+    const [instagram, youtube] = await Promise.all([
+        getInstagramData(name),
+        getYouTubeData(name)
+    ]);
+
+    const result = calculateInfluencerSignals(instagram, youtube, null);
+
+    res.json({
+        name,
+        instagram_found: !!instagram,
+        youtube_found:   !!youtube,
+        ...result
+    });
+});
 module.exports = router;
