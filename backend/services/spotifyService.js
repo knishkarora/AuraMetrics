@@ -4,14 +4,13 @@ let cachedToken = null;
 let tokenExpiry = 0;
 
 // ===========================================================
-// 🔹 FUNCTION: Get Spotify Access Token (with caching)
+// 🔹 TOKEN FUNCTION
 // ===========================================================
 
 async function getSpotifyToken() {
     try {
         const now = Date.now();
 
-        // 🔹 Use cached token if still valid
         if (cachedToken && now < tokenExpiry) {
             return cachedToken;
         }
@@ -33,10 +32,8 @@ async function getSpotifyToken() {
             }
         );
 
-        // 🔹 Save token + expiry
         cachedToken = response.data.access_token;
-        tokenExpiry = now + (response.data.expires_in * 1000) - 60000; 
-        // minus 1 min safety buffer
+        tokenExpiry = now + (response.data.expires_in * 1000) - 60000;
 
         return cachedToken;
 
@@ -46,21 +43,41 @@ async function getSpotifyToken() {
     }
 }
 
+
 // ===========================================================
-// 🔹 FUNCTION: Get Spotify Artist Data
+// 🔹 TOP TRACKS FUNCTION (IMPORTANT — must be above usage)
+// ===========================================================
+
+async function getArtistTopTracks(artistId, token) {
+    try {
+        const response = await axios.get(
+            `https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=IN`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            }
+        );
+
+        return response.data.tracks;
+
+    } catch (error) {
+        console.error("❌ Top Tracks Error:", error.response?.data || error.message);
+        return [];
+    }
+}
+
+
+// ===========================================================
+// 🔹 MAIN FUNCTION
 // ===========================================================
 
 async function getSpotifyArtistData(name) {
     try {
-        // 🔹 Step 1: Get access token
         const token = await getSpotifyToken();
-
-        // 🔹 Debug (important while developing)
-        console.log("Spotify Token:", token);
 
         if (!token) return null;
 
-        // 🔹 Step 2: Search artist
         const response = await axios.get(
             `https://api.spotify.com/v1/search?q=${encodeURIComponent(name)}&type=artist&limit=1`,
             {
@@ -72,18 +89,23 @@ async function getSpotifyArtistData(name) {
 
         const artist = response.data.artists.items[0];
 
-        if (!artist) {
-            console.log("⚠️ No artist found");
-            return null;
-        }
+        if (!artist) return null;
 
-        // 🔹 Step 3: Return clean structured data
+
+        const topTracks = await getArtistTopTracks(artist.id, token);
+
+        const tracks = topTracks.map(track => ({
+            name: track.name,
+            popularity: track.popularity
+        }));
+
         return {
             name: artist.name,
             followers: artist.followers.total,
-            popularity: artist.popularity, // 0–100
+            popularity: artist.popularity,
             genres: artist.genres,
-            spotify_url: artist.external_urls.spotify
+            spotify_url: artist.external_urls.spotify,
+            top_tracks: tracks
         };
 
     } catch (error) {
@@ -92,4 +114,7 @@ async function getSpotifyArtistData(name) {
     }
 }
 
-module.exports = { getSpotifyToken, getSpotifyArtistData };
+module.exports = {
+    getSpotifyToken,
+    getSpotifyArtistData
+};
