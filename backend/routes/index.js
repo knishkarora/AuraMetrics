@@ -7,6 +7,7 @@ const { getTMDBData }       = require('../services/tmdbService');
 const { getMovieDetails }   = require('../services/omdbService');
 const { getEnrichedActorData } = require('../services/enrichmentService');
 const { getSpotifyToken, getSpotifyArtistData } = require('../services/spotifyService');
+const { calculateSpotifySignals } = require('../services/spotifySignalService');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -133,6 +134,19 @@ router.get('/test/spotify', async (req, res) => {
   const data = await getSpotifyArtistData(name);
 
   res.json(data);
+});
+
+// Spotify signals test route
+router.get('/test/spotify-signals', async (req, res) => {
+  const { name } = req.query;
+
+  const artistData = await getSpotifyArtistData(name);
+  const signals = calculateSpotifySignals(artistData);
+
+  res.json({
+    artist: artistData,
+    signals
+  });
 });
 
 module.exports = router;
