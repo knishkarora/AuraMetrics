@@ -216,4 +216,29 @@ router.get('/test/lastfm', async (req, res) => {
 
     res.json(data);
 });
+
+const { getCompleteProfile } = require('../services/aggregatorService');
+
+// ─────────────────────────────────────────────
+// MASTER PROFILE ROUTE — the main endpoint
+// GET /api/profile?name=Virat Kohli
+// GET /api/profile?name=Shah Rukh Khan&type=actor
+// type is optional — Groq classifies if not provided
+// ─────────────────────────────────────────────
+router.get('/profile', async (req, res) => {
+    const { name, type } = req.query;
+
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    console.log(`Profile request: ${name} (${type || 'auto-classify'})`);
+
+    const profile = await getCompleteProfile(name, type || null);
+
+    if (profile.error) {
+        return res.status(404).json(profile);
+    }
+
+    res.json(profile);
+});
+
 module.exports = router;
