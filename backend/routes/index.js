@@ -6,9 +6,8 @@ const { getInstagramData }  = require('../services/instagramService');
 const { getTMDBData }       = require('../services/tmdbService');
 const { getMovieDetails }   = require('../services/omdbService');
 const { getEnrichedActorData } = require('../services/enrichmentService');
-const { getSpotifyToken, getSpotifyArtistData } = require('../services/spotifyService');
-const { calculateSpotifySignals } = require('../services/spotifySignalService');
 const { calculateInfluencerSignals } = require('../services/influencerSignalService');
+const { getLastFmData } = require('../services/lastfmService');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -122,33 +121,7 @@ router.get('/test/enriched', async (req, res) => {
   }
 });
 
-// Spotify test route
-router.get('/test/spotify-token', async (req, res) => {
-  const token = await getSpotifyToken();
-  res.json({ token });
-});
 
-// Spotify artist test route
-router.get('/test/spotify', async (req, res) => {
-  const { name } = req.query;
-
-  const data = await getSpotifyArtistData(name);
-
-  res.json(data);
-});
-
-// Spotify signals test route
-router.get('/test/spotify-signals', async (req, res) => {
-  const { name } = req.query;
-
-  const artistData = await getSpotifyArtistData(name);
-  const signals = calculateSpotifySignals(artistData);
-
-  res.json({
-    artist: artistData,
-    signals
-  });
-});
 
 const { generateInsights } = require('../services/aiService');
 
@@ -176,7 +149,7 @@ router.get('/test/ai', async (req, res) => {
       box_office_trend:        1.2,
       commercial_reliability:  80
     },
-    spotify: null
+    lastfm: null
   };
 
   const mockAuraData = {
@@ -216,19 +189,31 @@ router.get('/test/influencer-signals', async (req, res) => {
     const { name } = req.query;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
-    // Fetch both platforms in parallel
-    const [instagram, youtube] = await Promise.all([
+    // Fetch all platforms in parallel
+    const [instagram, youtube, lastfm] = await Promise.all([
         getInstagramData(name),
-        getYouTubeData(name)
+        getYouTubeData(name),
+        getLastFmData(name)
     ]);
 
-    const result = calculateInfluencerSignals(instagram, youtube, null);
+    const result = calculateInfluencerSignals(instagram, youtube, lastfm);
 
     res.json({
         name,
         instagram_found: !!instagram,
         youtube_found:   !!youtube,
+        lastfm_found:    !!lastfm,
         ...result
     });
+});
+
+router.get('/test/lastfm', async (req, res) => {
+    const { name } = req.query;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const data = await getLastFmData(name);
+    if (!data) return res.status(404).json({ error: `No artist found for "${name}"` });
+
+    res.json(data);
 });
 module.exports = router;

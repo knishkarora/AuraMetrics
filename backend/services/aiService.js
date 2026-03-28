@@ -79,7 +79,7 @@ const buildPrompt = (profileData, auraData, webContext) => {
         instagram,
         youtube,
         tmdb,
-        spotify
+        lastfm
     } = profileData;
 
     const {
@@ -128,14 +128,15 @@ BOX OFFICE & FILMS:
 `;
     }
 
-    if (spotify) {
+    if (lastfm) {
         platformSection += `
-SPOTIFY:
-- Followers: ${spotify.followers?.toLocaleString()}
-- Popularity Score: ${spotify.popularity}/100
-- Top Track: ${spotify.top_track_name}
-- Avg Track Popularity: ${spotify.avg_track_popularity}
-- Genres: ${spotify.genres?.join(", ")}
+LAST.FM (MUSIC):
+(Note: Last.fm listeners reflect the platform's ecosystem only, and is much smaller than global reach platforms like Spotify. Interpret these numbers as a sample of dedicated niche listeners.)
+- Monthly Listeners: ${lastfm.listeners?.toLocaleString()}
+- Total Play Count: ${lastfm.play_count?.toLocaleString()}
+- Top Track: ${lastfm.top_track_name || 'N/A'} (Plays: ${lastfm.top_track_plays?.toLocaleString() || 0})
+- Play Momentum: ${lastfm.music_signals?.play_momentum || 0}/10
+- Genres/Tags: ${lastfm.tags?.join(", ") || 'N/A'}
 `;
     }
 

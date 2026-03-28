@@ -1,6 +1,6 @@
 // ===========================================================
 // 🔹 Influencer Signal Engine
-// Works with YouTube + Instagram + Spotify data
+// Works with YouTube + Instagram + Last.fm data
 // Parallel to actorSignalService — same output structure
 // So Aura Score works identically for both types
 // ===========================================================
@@ -10,7 +10,7 @@
 // Measures total cross-platform audience size
 // Log scaled — 10x followers ≠ 10x reach
 // ===========================================================
-function calculateReachScore(instagram, youtube, spotify) {
+function calculateReachScore(instagram, youtube, lastfm) {
     let totalScore = 0;
     let platformCount = 0;
 
@@ -33,15 +33,14 @@ function calculateReachScore(instagram, youtube, spotify) {
         platformCount++;
     }
 
-    if (spotify?.followers) {
-        const spScore = Math.min(
-            Math.log10(spotify.followers) * 1.4,
+    if (lastfm?.listeners) {
+        const lfmScore = Math.min(
+            Math.log10(lastfm.listeners) * 1.4,
             10
         );
-        totalScore += spScore * 0.15; // Spotify supporting signal
+        totalScore += lfmScore * 0.15; // Last.fm supporting signal
         platformCount++;
     }
-
     if (platformCount === 0) return null;
 
     return parseFloat(totalScore.toFixed(2));
@@ -288,12 +287,12 @@ function calculateInfluencerAuraBreakdown(signals) {
 
 // ===========================================================
 // 🔹 MASTER FUNCTION — called by aggregator
-// Takes raw Instagram + YouTube + Spotify data
+// Takes raw Instagram + YouTube + Last.fm data
 // Returns complete signal object ready for AI layer
 // ===========================================================
-function calculateInfluencerSignals(instagram, youtube, spotify) {
+function calculateInfluencerSignals(instagram, youtube, lastfm) {
     // Calculate all individual signals
-    const reach = calculateReachScore(instagram, youtube, spotify);
+    const reach = calculateReachScore(instagram, youtube, lastfm);
     const engagement = calculateEngagementScore(instagram, youtube);
     const authenticity = calculateAuthenticityScore(instagram, youtube);
     const growth = calculateGrowthScore(instagram, youtube);
@@ -318,7 +317,7 @@ function calculateInfluencerSignals(instagram, youtube, spotify) {
     let platformsFound = 0;
     if (instagram) platformsFound++;
     if (youtube) platformsFound++;
-    if (spotify) platformsFound++;
+    if (lastfm) platformsFound++;
 
     const confidence = platformsFound === 3 ? 95
         : platformsFound === 2 ? 75
