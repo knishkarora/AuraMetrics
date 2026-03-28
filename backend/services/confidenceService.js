@@ -272,6 +272,40 @@ function detectAnomalies(type, { instagram, youtube, lastfm, actorData }) {
         }
     }
 
+    // ─────────────────────────────────────────────
+    // ANOMALY 7: Instagram followers vs reels views gap
+    // reels_reach_ratio = (avg reel views / followers) × 100
+    // Below 5% with 1M+ followers = fake audience flag
+    // Reels views are very hard to fake — algorithm driven
+    // ─────────────────────────────────────────────
+    if (instagram?.followers > 1000000 && instagram?.reels_reach_ratio !== undefined) {
+        if (instagram.reels_reach_ratio < 5) {
+            anomalies.push({
+                severity: 'high',
+                type:     'followers_views_gap',
+                message:  `${(instagram.followers / 1e6).toFixed(1)}M followers but reels only reach ${instagram.reels_reach_ratio}% of audience (avg views: ${(instagram.reels_avg_views || 0).toLocaleString()}) — fake audience flag`,
+                platforms: ['instagram']
+            });
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // ANOMALY 8: YouTube avg views vs subscribers gap
+    // If avg video views are less than 1% of subs
+    // with 500K+ subs = ghost subscriber flag
+    // ─────────────────────────────────────────────
+    if (youtube?.subscribers > 500000 && youtube?.avg_views > 0) {
+        const viewSubPercent = (youtube.avg_views / youtube.subscribers) * 100;
+        if (viewSubPercent < 1) {
+            anomalies.push({
+                severity: 'high',
+                type:     'ghost_subscribers',
+                message:  `${(youtube.subscribers / 1e6).toFixed(1)}M subscribers but avg ${youtube.avg_views.toLocaleString()} views per video (${viewSubPercent.toFixed(2)}% reach) — ghost subscriber flag`,
+                platforms: ['youtube']
+            });
+        }
+    }
+
     return anomalies;
 }
 
