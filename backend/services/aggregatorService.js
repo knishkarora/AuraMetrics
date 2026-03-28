@@ -5,6 +5,7 @@ const { getEnrichedActorData }    = require('./enrichmentService');
 const { getLastFmData }           = require('./lastfmService');
 const { classifyPersonType }      = require('./classifierService');
 const { calculateInfluencerSignals } = require('./influencerSignalService');
+const { buildConfidenceReport } = require('./confidenceService');
 const {
     calculateAverageIMDbRating,
     calculateRatingConsistency,
@@ -55,15 +56,13 @@ const runActorPipeline = async (name) => {
     const aura_breakdown = calculateAuraBreakdown(signals);
 
     // ─────────────────────────────────────────────
-    // Confidence meter for actors
-    // Based on data completeness
+    // Confidence Meter — cross-platform validation
+    // Replaces old simple counter with full report
     // ─────────────────────────────────────────────
-    let confidence = 50;
-    if (movies.length >= 3)     confidence += 20;
-    if (signals.avgIMDb)        confidence += 10;
-    if (signals.awards > 0)     confidence += 10;
-    if (instagram)              confidence += 10;
-    confidence = Math.min(confidence, 95);
+    const confidenceReport = buildConfidenceReport('actor', {
+        instagram,
+        actorData
+    });
 
     return {
         name,
@@ -73,7 +72,7 @@ const runActorPipeline = async (name) => {
         signals,
         aura_score,
         aura_breakdown,
-        confidence
+        ...confidenceReport
     };
 };
 
@@ -94,12 +93,19 @@ const runInfluencerPipeline = async (name) => {
 
     const result = calculateInfluencerSignals(instagram, youtube, null);
 
+    // Build confidence report — replaces simple platform counter
+    const confidenceReport = buildConfidenceReport('influencer', {
+        instagram,
+        youtube
+    });
+
     return {
         name,
         type:      'influencer',
         instagram: instagram || null,
         youtube:   youtube   || null,
-        ...result
+        ...result,
+        ...confidenceReport
     };
 };
 
@@ -122,6 +128,13 @@ const runMusicianPipeline = async (name) => {
     // Musicians use influencer signals + music signals combined
     const socialSignals = calculateInfluencerSignals(instagram, youtube, null);
 
+    // Build confidence report — covers all 3 platforms
+    const confidenceReport = buildConfidenceReport('musician', {
+        instagram,
+        youtube,
+        lastfm
+    });
+
     return {
         name,
         type:      'musician',
@@ -129,6 +142,7 @@ const runMusicianPipeline = async (name) => {
         instagram: instagram || null,
         youtube:   youtube   || null,
         ...socialSignals,
+        ...confidenceReport,
 
         // Music specific signals on top
         music_signals: lastfm?.music_signals || null
@@ -153,12 +167,19 @@ const runAthletePipeline = async (name) => {
 
     const result = calculateInfluencerSignals(instagram, youtube, null);
 
+    // Build confidence report
+    const confidenceReport = buildConfidenceReport('athlete', {
+        instagram,
+        youtube
+    });
+
     return {
         name,
         type:      'athlete',
         instagram: instagram || null,
         youtube:   youtube   || null,
-        ...result
+        ...result,
+        ...confidenceReport
     };
 };
 
@@ -198,10 +219,11 @@ const getCompleteProfile = async (name, type = null) => {
         console.log(`Aggregator: Generating AI insights...`);
 
         const auraData = {
-            aura_score:     profileData.aura_score,
-            confidence:     profileData.confidence,
-            aura_breakdown: profileData.aura_breakdown,
-            signals:        profileData.signals || profileData.signals
+            aura_score:      profileData.aura_score,
+            confidence:      profileData.confidence,
+            confidence_meta: profileData.confidence_meta || null,
+            aura_breakdown:  profileData.aura_breakdown,
+            signals:         profileData.signals || profileData.signals
         };
 
         const insights = await generateInsights(profileData, auraData);

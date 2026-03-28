@@ -86,6 +86,7 @@ const buildPrompt = (profileData, auraData, webContext) => {
     const {
         aura_score,
         confidence,
+        confidence_meta,
         aura_breakdown,
         signals
     } = auraData;
@@ -160,7 +161,7 @@ PROFILE: ${name} (${type})
 ${platformSection}
 
 AURA SCORE: ${aura_score}/100
-CONFIDENCE: ${confidence}%
+CONFIDENCE: ${confidence}%${confidence_meta ? ` (${confidence_meta.tier})` : ''}
 
 AURA BREAKDOWN:
 - Quality:      ${aura_breakdown?.quality}/100
@@ -169,6 +170,12 @@ AURA BREAKDOWN:
 - Momentum:     ${aura_breakdown?.momentum}/100
 - Stability:    ${aura_breakdown?.stability}/100
 
+${confidence_meta ? `DATA RELIABILITY CONTEXT:
+- Confidence Summary: ${confidence_meta.summary}
+- Platforms Used: ${confidence_meta.platforms_used}/${confidence_meta.platforms_expected}
+${confidence_meta.anomalies?.length > 0 ? `- Anomalies Detected:\n${confidence_meta.anomalies.map(a => `  ⚠️ [${a.severity.toUpperCase()}] ${a.message}`).join('\n')}` : '- No anomalies detected.'}
+${confidence_meta.data_gaps?.length > 0 ? `- Data Gaps:\n${confidence_meta.data_gaps.map(g => `  📭 [${g.impact.toUpperCase()}] ${g.message}`).join('\n')}` : '- No data gaps.'}
+` : ''}
 KEY SIGNALS:
 ${JSON.stringify(signals, null, 2)}
 
@@ -199,7 +206,7 @@ YOUR TASK — Respond in this EXACT JSON format:
     }
   ],
 
-  "confidence_explanation": "1-2 sentences explaining why the confidence score is ${confidence}%. What data supports or weakens it?"
+  "confidence_explanation": "1-2 sentences explaining why the confidence score is ${confidence}%. Reference specific data gaps, anomalies, or platform coverage from the DATA RELIABILITY CONTEXT above. Be specific — cite which platforms contributed or were missing."
 }
 
 Return ONLY valid JSON. No extra text, no markdown, no explanation outside the JSON.

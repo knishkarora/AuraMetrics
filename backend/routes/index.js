@@ -300,7 +300,7 @@ router.get('/profile/stream', async (req, res) => {
 
         // ── STEP 5: Complete profile via aggregator ──
         const profile = await getCompleteProfile(name, resolvedType);
-        send('signals',  { aura_score: profile.aura_score, aura_breakdown: profile.aura_breakdown, confidence: profile.confidence, signals: profile.signals });
+        send('signals',  { aura_score: profile.aura_score, aura_breakdown: profile.aura_breakdown, confidence: profile.confidence, confidence_meta: profile.confidence_meta || null, signals: profile.signals });
         send('insights', profile.ai_insights);
 
         // ── DONE ──
