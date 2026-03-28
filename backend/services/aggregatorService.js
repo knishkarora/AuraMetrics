@@ -373,4 +373,254 @@ const getCompleteProfile = async (name, type = null) => {
 };
 
 
-module.exports = { getCompleteProfile, getStreamableProfile, assembleProfile };
+// ===========================================================
+// 🔹 NORMALIZATION LAYER — Maps any profile to 6 common dims
+// This is what makes cross-type comparison possible.
+// Actor reach uses TMDB popularity + Instagram followers
+// Influencer reach uses YouTube subs + Instagram followers
+// Same output shape, different input signals.
+//
+// All dimensions normalized to 0–100 scale.
+// ===========================================================
+const normalizeToCommonDimensions = (profileData) => {
+    if (!profileData) return null;
+
+    const { type, instagram, youtube, lastfm, signals, aura_score, aura_breakdown } = profileData;
+
+    // ── Helper: clamp to 0–100 ──
+    const clamp = (val) => Math.max(0, Math.min(100, Math.round(val)));
+
+    // ── Helper: log-scale follower count to 0–100 ──
+    // 1K=30, 10K=40, 100K=50, 1M=60, 10M=70, 100M=80, 1B=90
+    const logFollowers = (count) => {
+        if (!count || count <= 0) return 0;
+        return clamp(Math.log10(count) * 10);
+    };
+
+    let reach = 0, engagement = 0, authenticity = 0;
+    let momentum = 0, brandSafety = 0, commercialValue = 0;
+
+    // ─────────────────────────────────────────────
+    // REACH — how many people can they actually touch?
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        const igReach   = logFollowers(instagram?.followers);
+        const tmdbPop   = clamp((profileData.profile?.tmdb_popularity || 0) * 2);
+        reach = clamp((igReach * 0.5) + (tmdbPop * 0.5));
+    } else if (type === 'musician') {
+        const igReach   = logFollowers(instagram?.followers);
+        const lfmReach  = logFollowers(lastfm?.listeners);
+        const ytReach   = logFollowers(youtube?.subscribers);
+        reach = clamp((igReach * 0.35) + (lfmReach * 0.35) + (ytReach * 0.30));
+    } else {
+        // influencer, athlete
+        const igReach   = logFollowers(instagram?.followers);
+        const ytReach   = logFollowers(youtube?.subscribers);
+        reach = clamp((igReach * 0.55) + (ytReach * 0.45));
+    }
+
+    // ─────────────────────────────────────────────
+    // ENGAGEMENT — how deeply does audience connect?
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        const igEng = instagram?.combined_engagement_rate || 0;
+        // Actor engagement also factors in audience rating quality
+        const ratingEng = ((signals?.avgIMDb || 0) / 10) * 100;
+        engagement = clamp((igEng * 8) * 0.5 + ratingEng * 0.5);
+    } else if (type === 'musician') {
+        const igEng = instagram?.combined_engagement_rate || 0;
+        const ytEng = youtube?.engagement_rate || 0;
+        const playMomentum = (lastfm?.music_signals?.play_momentum || 0) * 10;
+        engagement = clamp(((igEng * 8) * 0.35) + ((ytEng * 8) * 0.30) + (playMomentum * 0.35));
+    } else {
+        const igEng = instagram?.combined_engagement_rate || 0;
+        const ytEng = youtube?.engagement_rate || 0;
+        engagement = clamp(((igEng * 8) * 0.55) + ((ytEng * 8) * 0.45));
+    }
+
+    // ─────────────────────────────────────────────
+    // AUTHENTICITY — how genuine is their following?
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        // Actors have high inherent authenticity (public figures)
+        const igAuth = instagram?.follower_following_ratio
+            ? clamp(Math.log10(instagram.follower_following_ratio + 1) * 25)
+            : 50;
+        const ratingGap = signals?.ratingGap || 0;
+        const gapScore = clamp(100 - (ratingGap * 15));
+        authenticity = clamp((igAuth * 0.5) + (gapScore * 0.5));
+    } else {
+        // For influencer/musician/athlete — use signal engine's authenticity
+        const rawAuth = profileData.signals?.authenticity || 0;
+        authenticity = clamp(rawAuth * 10);
+    }
+
+    // ─────────────────────────────────────────────
+    // MOMENTUM — are they growing or declining?
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        const trendScore = (signals?.trend || 0) * 10;
+        const igTrend = instagram?.reels_trend
+            ? clamp(instagram.reels_trend * 50)
+            : 50;
+        momentum = clamp((trendScore * 0.6) + (igTrend * 0.4));
+    } else if (type === 'musician') {
+        const igTrend = instagram?.reels_trend ? clamp(instagram.reels_trend * 50) : 50;
+        const ytTrend = youtube?.views_trend ? clamp(youtube.views_trend * 50) : 50;
+        const playMomentum = (lastfm?.music_signals?.play_momentum || 5) * 10;
+        momentum = clamp((igTrend * 0.30) + (ytTrend * 0.30) + (playMomentum * 0.40));
+    } else {
+        const igTrend = instagram?.reels_trend ? clamp(instagram.reels_trend * 50) : 50;
+        const ytTrend = youtube?.views_trend ? clamp(youtube.views_trend * 50) : 50;
+        momentum = clamp((igTrend * 0.55) + (ytTrend * 0.45));
+    }
+
+    // ─────────────────────────────────────────────
+    // BRAND SAFETY — how risky are they for a brand?
+    // Higher = safer (inverted risk)
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        const hitRatio = (signals?.hitRatio || 0) * 100;
+        const consistency = signals?.consistency !== null
+            ? clamp(100 - (signals.consistency * 10))
+            : 50;
+        const igVerified = instagram?.is_verified ? 80 : 50;
+        brandSafety = clamp((hitRatio * 0.4) + (consistency * 0.3) + (igVerified * 0.3));
+    } else {
+        const authScore = profileData.signals?.authenticity
+            ? clamp(profileData.signals.authenticity * 10)
+            : 50;
+        const consistencyScore = profileData.signals?.consistency
+            ? clamp(profileData.signals.consistency * 10)
+            : 50;
+        const igVerified = instagram?.is_verified ? 80 : 50;
+        brandSafety = clamp((authScore * 0.35) + (consistencyScore * 0.35) + (igVerified * 0.30));
+    }
+
+    // ─────────────────────────────────────────────
+    // COMMERCIAL VALUE — what's their market worth?
+    // ─────────────────────────────────────────────
+    if (type === 'actor') {
+        const boxOffice = signals?.boxOffice?.combined
+            ? clamp(Math.min(signals.boxOffice.combined / 5000000, 100))
+            : 0;
+        const roi = signals?.roi ? clamp(signals.roi / 3) : 0;
+        commercialValue = clamp((boxOffice * 0.5) + (roi * 0.3) + (reach * 0.2));
+    } else {
+        // For non-actors, commercial value is derived from reach + engagement
+        commercialValue = clamp((reach * 0.4) + (engagement * 0.35) + (authenticity * 0.25));
+    }
+
+    return {
+        name:           profileData.name,
+        type:           profileData.type,
+        aura_score:     aura_score || 0,
+        aura_breakdown: aura_breakdown || null,
+        confidence:     profileData.confidence || 0,
+        dimensions: {
+            reach,
+            engagement,
+            authenticity,
+            momentum,
+            brand_safety:     brandSafety,
+            commercial_value: commercialValue
+        },
+        // Overall dimension average (weighted)
+        dimension_average: clamp(
+            (reach * 0.20) +
+            (engagement * 0.20) +
+            (authenticity * 0.15) +
+            (momentum * 0.15) +
+            (brandSafety * 0.15) +
+            (commercialValue * 0.15)
+        )
+    };
+};
+
+
+// ===========================================================
+// 🔹 COMPARE PROFILES — Fetches two profiles in parallel
+// Returns both raw profiles + normalized dimensions
+// Ready for AI comparison layer
+// ===========================================================
+const compareProfiles = async (name1, name2, type1 = null, type2 = null) => {
+    try {
+        console.log(`\nComparison: "${name1}" vs "${name2}"`);
+
+        // ── Step 1: Classify both in parallel if needed ──
+        const [resolvedType1, resolvedType2] = await Promise.all([
+            type1 ? Promise.resolve(type1) : classifyPersonType(name1),
+            type2 ? Promise.resolve(type2) : classifyPersonType(name2)
+        ]);
+
+        console.log(`Comparison: Types → ${resolvedType1} vs ${resolvedType2}`);
+
+        // ── Step 2: Fetch both profiles in parallel ──
+        const [profile1, profile2] = await Promise.allSettled([
+            getCompleteProfileForComparison(name1, resolvedType1),
+            getCompleteProfileForComparison(name2, resolvedType2)
+        ]);
+
+        const p1 = profile1.status === 'fulfilled' ? profile1.value : null;
+        const p2 = profile2.status === 'fulfilled' ? profile2.value : null;
+
+        if (!p1 || p1.error) {
+            return { error: `Could not fetch profile for "${name1}": ${p1?.error || 'unknown error'}` };
+        }
+        if (!p2 || p2.error) {
+            return { error: `Could not fetch profile for "${name2}": ${p2?.error || 'unknown error'}` };
+        }
+
+        // ── Step 3: Normalize both to common dimensions ──
+        const normalized1 = normalizeToCommonDimensions(p1);
+        const normalized2 = normalizeToCommonDimensions(p2);
+
+        return {
+            profile1: p1,
+            profile2: p2,
+            normalized1,
+            normalized2
+        };
+
+    } catch (error) {
+        console.error('Comparison error:', error.message);
+        return { error: error.message };
+    }
+};
+
+
+// ─────────────────────────────────────────────
+// Internal helper — gets a profile without AI insights
+// (AI comparison generates its own insights)
+// This is faster since we skip the single-profile AI call
+// ─────────────────────────────────────────────
+const getCompleteProfileForComparison = async (name, type) => {
+    try {
+        let profileData = null;
+
+        if      (type === 'actor')      profileData = await runActorPipeline(name);
+        else if (type === 'influencer') profileData = await runInfluencerPipeline(name);
+        else if (type === 'musician')   profileData = await runMusicianPipeline(name);
+        else if (type === 'athlete')    profileData = await runAthletePipeline(name);
+        else                            profileData = await runInfluencerPipeline(name);
+
+        if (!profileData) {
+            return { error: `No data found for "${name}"` };
+        }
+
+        return profileData;
+
+    } catch (error) {
+        console.error(`Profile fetch failed for "${name}":`, error.message);
+        return { error: error.message };
+    }
+};
+
+
+module.exports = {
+    getCompleteProfile,
+    getStreamableProfile,
+    assembleProfile,
+    normalizeToCommonDimensions,
+    compareProfiles
+};

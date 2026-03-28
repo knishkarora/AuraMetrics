@@ -123,7 +123,7 @@ router.get('/test/enriched', async (req, res) => {
 
 
 
-const { generateInsights } = require('../services/aiService');
+const { generateInsights, generateComparisonInsights } = require('../services/aiService');
 
 router.get('/test/ai', async (req, res) => {
   const { name, type } = req.query;
@@ -217,7 +217,7 @@ router.get('/test/lastfm', async (req, res) => {
     res.json(data);
 });
 
-const { getCompleteProfile, assembleProfile } = require('../services/aggregatorService');
+const { getCompleteProfile, assembleProfile, compareProfiles, normalizeToCommonDimensions } = require('../services/aggregatorService');
 
 // ─────────────────────────────────────────────
 // MASTER PROFILE ROUTE — the main endpoint
@@ -391,5 +391,144 @@ router.get('/profile/stream', async (req, res) => {
         res.end();
     }
 });
+
+
+// ===========================================================
+// 🔹 COMPARISON STREAM ROUTE — /api/compare/stream
+// SSE endpoint that compares two profiles head-to-head
+// Streams progress events as each stage completes
+//
+// Query params:
+//   name1  = first person's name  (required)
+//   name2  = second person's name (required)
+//   type1  = override type for person 1 (optional)
+//   type2  = override type for person 2 (optional)
+//
+// Example:
+//   /api/compare/stream?name1=MrBeast&name2=Shah Rukh Khan
+//   /api/compare/stream?name1=Virat Kohli&name2=Arijit Singh
+// ===========================================================
+router.get('/compare/stream', async (req, res) => {
+    const { name1, name2, type1, type2 } = req.query;
+
+    if (!name1 || !name2) {
+        return res.status(400).json({ error: 'Both name1 and name2 are required' });
+    }
+
+    // ── SSE Headers ──
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.flushHeaders();
+
+    const send = (event, data) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+        const startTime = Date.now();
+
+        // ══════════════════════════════════════════
+        // STEP 1: Classify both profiles in parallel
+        // ══════════════════════════════════════════
+        send('status', { message: 'Classifying both profiles...' });
+
+        const [resolvedType1, resolvedType2] = await Promise.all([
+            type1 ? Promise.resolve(type1) : classifyPersonType(name1),
+            type2 ? Promise.resolve(type2) : classifyPersonType(name2)
+        ]);
+
+        send('types', {
+            profile1: { name: name1, type: resolvedType1 },
+            profile2: { name: name2, type: resolvedType2 }
+        });
+        console.log(`Compare SSE: Types resolved in ${Date.now() - startTime}ms — ${resolvedType1} vs ${resolvedType2}`);
+
+        // ══════════════════════════════════════════
+        // STEP 2: Fetch both profiles simultaneously
+        // Using compareProfiles which runs both
+        // pipelines via Promise.allSettled
+        // ══════════════════════════════════════════
+        send('status', { message: 'Fetching both profiles simultaneously...' });
+
+        const comparisonData = await compareProfiles(name1, name2, resolvedType1, resolvedType2);
+
+        if (comparisonData.error) {
+            send('error', { message: comparisonData.error });
+            res.end();
+            return;
+        }
+
+        const { profile1, profile2, normalized1, normalized2 } = comparisonData;
+
+        // ── Stream Profile 1 ──
+        send('profile1', {
+            name:           profile1.name,
+            type:           profile1.type,
+            aura_score:     profile1.aura_score,
+            aura_breakdown: profile1.aura_breakdown,
+            confidence:     profile1.confidence,
+            instagram:      profile1.instagram || null,
+            youtube:        profile1.youtube   || null,
+            lastfm:         profile1.lastfm    || null
+        });
+        console.log(`Compare SSE: Profile 1 (${name1}) streamed in ${Date.now() - startTime}ms`);
+
+        // ── Stream Profile 2 ──
+        send('profile2', {
+            name:           profile2.name,
+            type:           profile2.type,
+            aura_score:     profile2.aura_score,
+            aura_breakdown: profile2.aura_breakdown,
+            confidence:     profile2.confidence,
+            instagram:      profile2.instagram || null,
+            youtube:        profile2.youtube   || null,
+            lastfm:         profile2.lastfm    || null
+        });
+        console.log(`Compare SSE: Profile 2 (${name2}) streamed in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // STEP 3: Stream normalized dimensions
+        // ══════════════════════════════════════════
+        send('status', { message: 'Normalizing for comparison...' });
+
+        send('normalized', {
+            profile1: normalized1,
+            profile2: normalized2
+        });
+        console.log(`Compare SSE: Normalized dimensions streamed in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // STEP 4: Generate AI comparison
+        // ══════════════════════════════════════════
+        send('status', { message: 'Generating AI comparison...' });
+
+        const comparison = await generateComparisonInsights(
+            profile1, profile2,
+            normalized1, normalized2
+        );
+
+        send('comparison', comparison);
+        console.log(`Compare SSE: AI comparison done in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // DONE
+        // ══════════════════════════════════════════
+        const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        send('done', {
+            message: 'Comparison complete',
+            total_time: `${totalTime}s`,
+            comparison_type: resolvedType1 === resolvedType2 ? 'same_type' : 'cross_type'
+        });
+        console.log(`Compare SSE: Full comparison for "${name1}" vs "${name2}" in ${totalTime}s`);
+        res.end();
+
+    } catch (error) {
+        send('error', { message: error.message });
+        res.end();
+    }
+});
+
 
 module.exports = router;

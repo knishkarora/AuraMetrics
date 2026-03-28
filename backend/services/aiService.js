@@ -304,4 +304,174 @@ const generateInsights = async (profileData, auraData) => {
     }
 };
 
-module.exports = { generateInsights };
+
+// ─────────────────────────────────────────────
+// COMPARISON PROMPT — Different from single profile
+// Two profiles side by side, 6 common dimensions
+// AI acts as a brand strategist making a pick
+// ─────────────────────────────────────────────
+const buildComparisonPrompt = (profile1, profile2, normalized1, normalized2, webContext1, webContext2) => {
+
+    const formatDimensions = (norm) => {
+        const d = norm.dimensions;
+        return `
+  Reach:            ${d.reach}/100
+  Engagement:       ${d.engagement}/100
+  Authenticity:     ${d.authenticity}/100
+  Momentum:         ${d.momentum}/100
+  Brand Safety:     ${d.brand_safety}/100
+  Commercial Value: ${d.commercial_value}/100
+  ──────────────────
+  Dimension Avg:    ${norm.dimension_average}/100`;
+    };
+
+    const formatProfile = (profile) => {
+        let section = '';
+
+        if (profile.instagram) {
+            section += `
+  Instagram: ${formatSocialCount(profile.instagram.followers)} followers, ${profile.instagram.combined_engagement_rate}% engagement`;
+        }
+        if (profile.youtube) {
+            section += `
+  YouTube: ${formatSocialCount(profile.youtube.subscribers)} subscribers, ${profile.youtube.engagement_rate}% engagement`;
+        }
+        if (profile.lastfm) {
+            section += `
+  Last.fm: ${formatSocialCount(profile.lastfm.listeners)} listeners, ${formatSocialCount(profile.lastfm.play_count)} plays`;
+        }
+        if (profile.profile?.recent_movies) {
+            const movies = profile.profile.recent_movies.slice(0, 5).map(m => m.title).join(', ');
+            section += `
+  Recent Films: ${movies}`;
+        }
+
+        return section;
+    };
+
+    return `
+You are AuraMetric's AI comparison analyst — an expert in cross-category influencer intelligence and brand partnership strategy.
+
+You have been given REAL-TIME data fetched live from APIs for TWO profiles. This is NOT your training data.
+Your job: compare them head-to-head across 6 standardized dimensions and declare dimension winners.
+
+═══════════════════════════════════════
+PROFILE A: ${profile1.name} (${profile1.type})
+═══════════════════════════════════════
+  Aura Score: ${profile1.aura_score || 'N/A'}/100
+  Confidence: ${profile1.confidence || 'N/A'}%
+${formatProfile(profile1)}
+
+  NORMALIZED DIMENSIONS:
+${formatDimensions(normalized1)}
+
+WEB CONTEXT (Profile A):
+${webContext1 || 'No recent web data available.'}
+
+═══════════════════════════════════════
+PROFILE B: ${profile2.name} (${profile2.type})
+═══════════════════════════════════════
+  Aura Score: ${profile2.aura_score || 'N/A'}/100
+  Confidence: ${profile2.confidence || 'N/A'}%
+${formatProfile(profile2)}
+
+  NORMALIZED DIMENSIONS:
+${formatDimensions(normalized2)}
+
+WEB CONTEXT (Profile B):
+${webContext2 || 'No recent web data available.'}
+
+═══════════════════════════════════════
+COMPARISON CONTEXT
+═══════════════════════════════════════
+This is a ${profile1.type === profile2.type ? 'same-type' : 'CROSS-TYPE'} comparison.
+${profile1.type !== profile2.type ? `Note: You are comparing a ${profile1.type} with a ${profile2.type}. The dimension scores have been normalized to a common scale, so direct comparison is valid.` : ''}
+
+═══════════════════════════════════════
+YOUR TASK — Respond in this EXACT JSON format:
+═══════════════════════════════════════
+
+{
+  "winner_overall": "Name of the overall winner",
+  "winner_score": 0,
+  "runner_up_score": 0,
+
+  "dimension_winners": {
+    "reach":            { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" },
+    "engagement":       { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" },
+    "authenticity":     { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" },
+    "momentum":         { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" },
+    "brand_safety":     { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" },
+    "commercial_value": { "winner": "Name", "winner_score": 0, "loser_score": 0, "margin": "significant|moderate|slight|tie", "reason": "1 sentence why" }
+  },
+
+  "verdict": "3-4 sentences. Who wins overall and why? Reference actual dimension scores. Be specific and data-driven.",
+
+  "use_cases": {
+    "choose_A_for": "2-3 sentence description of when/why to pick ${profile1.name}. Be specific about campaign types, demographics, regions.",
+    "choose_B_for": "2-3 sentence description of when/why to pick ${profile2.name}. Be specific about campaign types, demographics, regions."
+  },
+
+  "head_to_head_summary": "1-2 sentences. A punchy, memorable one-liner summarizing this matchup."
+}
+
+RULES:
+- Use actual names, not "Profile A" or "Profile B"
+- Use the normalized dimension scores provided — do NOT invent your own
+- margin is "significant" if gap > 15, "moderate" if 8-15, "slight" if 3-7, "tie" if < 3
+- winner_score and runner_up_score should be the dimension_average for each
+- Return ONLY valid JSON. No extra text, no markdown, no explanation outside the JSON.
+`;
+};
+
+
+// ─────────────────────────────────────────────
+// MASTER COMPARISON FUNCTION — called by route
+// Takes both profiles + normalized dimensions
+// Returns complete AI comparison report
+// ─────────────────────────────────────────────
+const generateComparisonInsights = async (profile1, profile2, normalized1, normalized2) => {
+    try {
+        console.log(`AI Comparison: "${profile1.name}" vs "${profile2.name}"`);
+
+        // ── Fetch web context for BOTH profiles in parallel ──
+        const [webContext1, webContext2] = await Promise.all([
+            fetchWebContext(profile1.name, profile1.type),
+            fetchWebContext(profile2.name, profile2.type)
+        ]);
+
+        console.log(`AI Comparison: Web context fetched, generating comparison...`);
+
+        // ── Build comparison prompt ──
+        const prompt = buildComparisonPrompt(
+            profile1, profile2,
+            normalized1, normalized2,
+            webContext1, webContext2
+        );
+
+        // ── Call NVIDIA NIM ──
+        const comparison = await callNvidiaLLM(prompt);
+
+        if (!comparison) {
+            return {
+                error:    'AI comparison generation failed',
+                fallback: true
+            };
+        }
+
+        return {
+            ...comparison,
+            generated_at:           new Date().toISOString(),
+            model_used:             'meta/llama-3.3-70b-instruct',
+            comparison_type:        profile1.type === profile2.type ? 'same_type' : 'cross_type',
+            web_context_available:  (webContext1.length > 0) || (webContext2.length > 0)
+        };
+
+    } catch (error) {
+        console.error('AI comparison error:', error.message);
+        return null;
+    }
+};
+
+
+module.exports = { generateInsights, generateComparisonInsights };
