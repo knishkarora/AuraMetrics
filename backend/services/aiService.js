@@ -1,4 +1,5 @@
 const axios = require("axios");
+const formatSocialCount = require("../utils/formatSocialCount");
 
 // ─────────────────────────────────────────────
 // AI Service — AuraMetric Intelligence Layer
@@ -96,9 +97,9 @@ const buildPrompt = (profileData, auraData, webContext) => {
     if (instagram) {
         platformSection += `
 INSTAGRAM:
-- Followers: ${instagram.followers?.toLocaleString()}
+- Followers: ${formatSocialCount(instagram.followers)}
 - Post Engagement Rate: ${instagram.post_engagement_rate}%
-- Reels Avg Views: ${instagram.reels_avg_views?.toLocaleString()}
+- Reels Avg Views: ${formatSocialCount(instagram.reels_avg_views)}
 - Reels Trend: ${instagram.reels_trend} (${instagram.reels_trend > 1 ? "📈 Growing" : "📉 Declining"})
 - Combined Engagement Rate: ${instagram.combined_engagement_rate}%
 - Follower/Following Ratio: ${instagram.follower_following_ratio}
@@ -108,8 +109,8 @@ INSTAGRAM:
     if (youtube) {
         platformSection += `
 YOUTUBE:
-- Subscribers: ${youtube.subscribers?.toLocaleString()}
-- Avg Views: ${youtube.avg_views?.toLocaleString()}
+- Subscribers: ${formatSocialCount(youtube.subscribers)}
+- Avg Views: ${formatSocialCount(youtube.avg_views)}
 - View to Sub Ratio: ${youtube.view_to_sub_ratio}%
 - Engagement Rate: ${youtube.engagement_rate}%
 - Views Trend: ${youtube.views_trend} (${youtube.views_trend > 1 ? "📈 Growing" : "📉 Declining"})
@@ -132,9 +133,9 @@ BOX OFFICE & FILMS:
         platformSection += `
 LAST.FM (MUSIC):
 (Note: Last.fm listeners reflect the platform's ecosystem only, and is much smaller than global reach platforms like Spotify. Interpret these numbers as a sample of dedicated niche listeners.)
-- Monthly Listeners: ${lastfm.listeners?.toLocaleString()}
-- Total Play Count: ${lastfm.play_count?.toLocaleString()}
-- Top Track: ${lastfm.top_track_name || 'N/A'} (Plays: ${lastfm.top_track_plays?.toLocaleString() || 0})
+- Monthly Listeners: ${formatSocialCount(lastfm.listeners)}
+- Total Play Count: ${formatSocialCount(lastfm.play_count)}
+- Top Track: ${lastfm.top_track_name || 'N/A'} (Plays: ${formatSocialCount(lastfm.top_track_plays || 0)})
 - Play Momentum: ${lastfm.music_signals?.play_momentum || 0}/10
 - Genres/Tags: ${lastfm.tags?.join(", ") || 'N/A'}
 `;

@@ -241,4 +241,76 @@ router.get('/profile', async (req, res) => {
     res.json(profile);
 });
 
+router.get('/profile/stream', async (req, res) => {
+    const { name, type } = req.query;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    // ─────────────────────────────────────────────
+    // SSE Headers — keeps connection open
+    // Frontend receives events as they arrive
+    // ─────────────────────────────────────────────
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.flushHeaders();
+
+    // Helper — sends one event to frontend
+    const send = (event, data) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+        // ── STEP 1: Classify type ──
+        send('status', { message: 'Identifying profile type...' });
+        const resolvedType = type || await classifyPersonType(name);
+        send('type', { type: resolvedType });
+
+        // ── STEP 2: Run platform fetches based on type ──
+        send('status', { message: 'Fetching Instagram data...' });
+        const instagram = await getInstagramData(name);
+        if (instagram) send('instagram', instagram);
+
+        if (resolvedType === 'actor') {
+            send('status', { message: 'Fetching film data...' });
+            const actorData = await getEnrichedActorData(name);
+            if (actorData) send('actor', actorData);
+
+        } else if (resolvedType === 'musician') {
+            send('status', { message: 'Fetching music data...' });
+            const lastfm = await getLastFmData(name);
+            if (lastfm) send('lastfm', lastfm);
+
+            send('status', { message: 'Fetching YouTube data...' });
+            const youtube = await getYouTubeData(name);
+            if (youtube) send('youtube', youtube);
+
+        } else {
+            // influencer or athlete
+            send('status', { message: 'Fetching YouTube data...' });
+            const youtube = await getYouTubeData(name);
+            if (youtube) send('youtube', youtube);
+        }
+
+        // ── STEP 3: Signals ──
+        send('status', { message: 'Calculating signals...' });
+
+        // ── STEP 4: AI Insights ──
+        send('status', { message: 'Generating AI insights...' });
+
+        // ── STEP 5: Complete profile via aggregator ──
+        const profile = await getCompleteProfile(name, resolvedType);
+        send('signals',  { aura_score: profile.aura_score, aura_breakdown: profile.aura_breakdown, confidence: profile.confidence, signals: profile.signals });
+        send('insights', profile.ai_insights);
+
+        // ── DONE ──
+        send('done', { message: 'Complete' });
+        res.end();
+
+    } catch (error) {
+        send('error', { message: error.message });
+        res.end();
+    }
+});
+
 module.exports = router;
