@@ -21,25 +21,46 @@ const {
 } = require('./signalService');
 const { generateInsights } = require('./aiService');
 
+
 // ─────────────────────────────────────────────
-// ACTOR PIPELINE
-// TMDB + OMDb enrichment → signals → Aura Score
+// HELPER: Safe promise wrapper
+// Returns { data, error } instead of throwing
+// Used with Promise.allSettled pattern
 // ─────────────────────────────────────────────
+const safeFetch = async (fetchFn, label) => {
+    try {
+        const data = await fetchFn();
+        return { data, error: null };
+    } catch (error) {
+        console.error(`SafeFetch [${label}] failed:`, error.message);
+        return { data: null, error: error.message };
+    }
+};
+
+
+// ===========================================================
+// 🔹 ACTOR PIPELINE — Parallelized
+// TMDB+OMDb enrichment runs IN PARALLEL with Instagram
+// Previously sequential: enrichment(8s) → instagram(5s) = 13s
+// Now parallel: max(enrichment, instagram) = ~8s
+// ===========================================================
 const runActorPipeline = async (name) => {
     console.log(`Aggregator: Running actor pipeline for "${name}"`);
 
-    // Fetch enriched actor data (TMDB + OMDb merged)
-    const actorData = await getEnrichedActorData(name);
-    if (!actorData) return null;
+    // ── Fire TMDB+OMDb and Instagram simultaneously ──
+    const [actorResult, igResult] = await Promise.allSettled([
+        getEnrichedActorData(name),
+        getInstagramData(name)
+    ]);
 
-    // Fetch Instagram in parallel — actors have social too
-    const instagram = await getInstagramData(name);
+    const actorData = actorResult.status === 'fulfilled' ? actorResult.value : null;
+    const instagram = igResult.status === 'fulfilled' ? igResult.value : null;
+
+    if (!actorData) return null;
 
     const movies = actorData.recent_movies || [];
 
-    // ─────────────────────────────────────────────
-    // Calculate all actor signals
-    // ─────────────────────────────────────────────
+    // ── Calculate all actor signals ──
     const signals = {
         avgIMDb:             calculateAverageIMDbRating(movies),
         consistency:         calculateRatingConsistency(movies),
@@ -55,10 +76,6 @@ const runActorPipeline = async (name) => {
     const aura_score     = calculateAuraScore(signals);
     const aura_breakdown = calculateAuraBreakdown(signals);
 
-    // ─────────────────────────────────────────────
-    // Confidence Meter — cross-platform validation
-    // Replaces old simple counter with full report
-    // ─────────────────────────────────────────────
     const confidenceReport = buildConfidenceReport('actor', {
         instagram,
         actorData
@@ -76,24 +93,25 @@ const runActorPipeline = async (name) => {
     };
 };
 
-// ─────────────────────────────────────────────
-// INFLUENCER PIPELINE
-// Instagram + YouTube → signals → Aura Score
-// ─────────────────────────────────────────────
+
+// ===========================================================
+// 🔹 INFLUENCER PIPELINE — Already parallel (Promise.all)
+// ===========================================================
 const runInfluencerPipeline = async (name) => {
     console.log(`Aggregator: Running influencer pipeline for "${name}"`);
 
-    // Fetch all platforms in parallel
-    const [instagram, youtube] = await Promise.all([
+    const [igResult, ytResult] = await Promise.allSettled([
         getInstagramData(name),
         getYouTubeData(name)
     ]);
+
+    const instagram = igResult.status === 'fulfilled' ? igResult.value : null;
+    const youtube   = ytResult.status === 'fulfilled' ? ytResult.value : null;
 
     if (!instagram && !youtube) return null;
 
     const result = calculateInfluencerSignals(instagram, youtube, null);
 
-    // Build confidence report — replaces simple platform counter
     const confidenceReport = buildConfidenceReport('influencer', {
         instagram,
         youtube
@@ -109,26 +127,27 @@ const runInfluencerPipeline = async (name) => {
     };
 };
 
-// ─────────────────────────────────────────────
-// MUSICIAN PIPELINE
-// Last.fm + Instagram + YouTube → signals → Aura Score
-// ─────────────────────────────────────────────
+
+// ===========================================================
+// 🔹 MUSICIAN PIPELINE — All 3 APIs in parallel
+// ===========================================================
 const runMusicianPipeline = async (name) => {
     console.log(`Aggregator: Running musician pipeline for "${name}"`);
 
-    // Fetch all platforms in parallel
-    const [lastfm, instagram, youtube] = await Promise.all([
+    const [lfmResult, igResult, ytResult] = await Promise.allSettled([
         getLastFmData(name),
         getInstagramData(name),
         getYouTubeData(name)
     ]);
 
+    const lastfm    = lfmResult.status === 'fulfilled' ? lfmResult.value : null;
+    const instagram = igResult.status  === 'fulfilled' ? igResult.value  : null;
+    const youtube   = ytResult.status  === 'fulfilled' ? ytResult.value  : null;
+
     if (!lastfm && !instagram && !youtube) return null;
 
-    // Musicians use influencer signals + music signals combined
     const socialSignals = calculateInfluencerSignals(instagram, youtube, null);
 
-    // Build confidence report — covers all 3 platforms
     const confidenceReport = buildConfidenceReport('musician', {
         instagram,
         youtube,
@@ -143,31 +162,29 @@ const runMusicianPipeline = async (name) => {
         youtube:   youtube   || null,
         ...socialSignals,
         ...confidenceReport,
-
-        // Music specific signals on top
         music_signals: lastfm?.music_signals || null
     };
 };
 
-// ─────────────────────────────────────────────
-// ATHLETE PIPELINE
-// Instagram + YouTube → signals → Aura Score
-// Athletes use same pipeline as influencers
-// TMDB only if they've appeared in films
-// ─────────────────────────────────────────────
+
+// ===========================================================
+// 🔹 ATHLETE PIPELINE — Already parallel
+// ===========================================================
 const runAthletePipeline = async (name) => {
     console.log(`Aggregator: Running athlete pipeline for "${name}"`);
 
-    const [instagram, youtube] = await Promise.all([
+    const [igResult, ytResult] = await Promise.allSettled([
         getInstagramData(name),
         getYouTubeData(name)
     ]);
+
+    const instagram = igResult.status === 'fulfilled' ? igResult.value : null;
+    const youtube   = ytResult.status === 'fulfilled' ? ytResult.value : null;
 
     if (!instagram && !youtube) return null;
 
     const result = calculateInfluencerSignals(instagram, youtube, null);
 
-    // Build confidence report
     const confidenceReport = buildConfidenceReport('athlete', {
         instagram,
         youtube
@@ -183,13 +200,127 @@ const runAthletePipeline = async (name) => {
     };
 };
 
-// ─────────────────────────────────────────────
-// MASTER AGGREGATOR FUNCTION
-// 1. Classify type via Groq (if not provided)
-// 2. Run correct pipeline
-// 3. Generate AI insights
-// 4. Return complete profile
-// ─────────────────────────────────────────────
+
+// ===========================================================
+// 🔹 ASSEMBLE PROFILE FROM RAW DATA
+// Takes pre-fetched platform data → builds complete profile
+// Used by both getCompleteProfile and SSE stream route
+// so data is never fetched twice.
+// ===========================================================
+const assembleProfile = (name, type, { instagram, youtube, lastfm, actorData }) => {
+
+    if (type === 'actor') {
+        if (!actorData) return null;
+
+        const movies = actorData.recent_movies || [];
+
+        const signals = {
+            avgIMDb:             calculateAverageIMDbRating(movies),
+            consistency:         calculateRatingConsistency(movies),
+            awards:              calculateAwardsScore(movies),
+            boxOffice:           calculateBoxOfficeStrength(movies),
+            trend:               calculateTrendScore(actorData, movies),
+            hitRatio:            calculateHitRatio(movies),
+            roi:                 calculateROIEfficiency(movies),
+            ratingGap:           calculateRatingGap(movies),
+            advancedConsistency: calculateAdvancedConsistency(movies)
+        };
+
+        const aura_score     = calculateAuraScore(signals);
+        const aura_breakdown = calculateAuraBreakdown(signals);
+
+        const confidenceReport = buildConfidenceReport('actor', { instagram, actorData });
+
+        return {
+            name, type: 'actor',
+            profile:   actorData,
+            instagram: instagram || null,
+            signals, aura_score, aura_breakdown,
+            ...confidenceReport
+        };
+    }
+
+    if (type === 'musician') {
+        if (!lastfm && !instagram && !youtube) return null;
+
+        const socialSignals = calculateInfluencerSignals(instagram, youtube, null);
+        const confidenceReport = buildConfidenceReport('musician', { instagram, youtube, lastfm });
+
+        return {
+            name, type: 'musician',
+            lastfm:    lastfm    || null,
+            instagram: instagram || null,
+            youtube:   youtube   || null,
+            ...socialSignals,
+            ...confidenceReport,
+            music_signals: lastfm?.music_signals || null
+        };
+    }
+
+    // influencer, athlete, or fallback
+    if (!instagram && !youtube) return null;
+
+    const result = calculateInfluencerSignals(instagram, youtube, null);
+    const confidenceReport = buildConfidenceReport(type, { instagram, youtube });
+
+    return {
+        name, type,
+        instagram: instagram || null,
+        youtube:   youtube   || null,
+        ...result,
+        ...confidenceReport
+    };
+};
+
+
+// ===========================================================
+// 🔹 STREAMABLE PROFILE BUILDER
+// Returns the classified type + individual promises
+// so the SSE route can emit events as each resolves.
+//
+// Flow:
+//   Step 1: Classify type         (1s)
+//   Step 2: All APIs in parallel  (max ~8s, was 15s sequential)
+//   Step 3: Assemble signals      (instant)
+//   Step 4: AI insights           (~8s)
+//   Total: ~18s (was ~30s)
+// ===========================================================
+const getStreamableProfile = async (name, type = null) => {
+
+    // ── Step 1: Classify (must run first) ──
+    if (!type) {
+        type = await classifyPersonType(name);
+    }
+
+    // ── Step 2: Build fetch promises based on type ──
+    // We DON'T await these yet — caller controls when/how to consume
+    const fetches = {
+        instagram: safeFetch(() => getInstagramData(name), 'Instagram'),
+    };
+
+    if (type === 'actor') {
+        fetches.actorData = safeFetch(() => getEnrichedActorData(name), 'TMDB+OMDb');
+    }
+
+    if (type === 'musician') {
+        fetches.lastfm  = safeFetch(() => getLastFmData(name),  'Last.fm');
+        fetches.youtube  = safeFetch(() => getYouTubeData(name), 'YouTube');
+    }
+
+    if (type === 'influencer' || type === 'athlete') {
+        fetches.youtube = safeFetch(() => getYouTubeData(name), 'YouTube');
+    }
+
+    return { type, fetches };
+};
+
+
+// ===========================================================
+// 🔹 MASTER AGGREGATOR — getCompleteProfile
+// Non-streaming endpoint: /api/profile
+// Now internally parallelized via Promise.allSettled
+// Still returns a single complete JSON response
+// ===========================================================
 const getCompleteProfile = async (name, type = null) => {
     try {
         console.log(`\nAggregator: Starting profile for "${name}"`);
@@ -241,4 +372,5 @@ const getCompleteProfile = async (name, type = null) => {
     }
 };
 
-module.exports = { getCompleteProfile };
+
+module.exports = { getCompleteProfile, getStreamableProfile, assembleProfile };

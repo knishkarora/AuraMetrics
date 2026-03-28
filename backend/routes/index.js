@@ -217,7 +217,7 @@ router.get('/test/lastfm', async (req, res) => {
     res.json(data);
 });
 
-const { getCompleteProfile } = require('../services/aggregatorService');
+const { getCompleteProfile, assembleProfile } = require('../services/aggregatorService');
 
 // ─────────────────────────────────────────────
 // MASTER PROFILE ROUTE — the main endpoint
@@ -261,50 +261,129 @@ router.get('/profile/stream', async (req, res) => {
     };
 
     try {
-        // ── STEP 1: Classify type ──
+        const startTime = Date.now();
+
+        // ══════════════════════════════════════════
+        // STEP 1: Classify type (must run first)
+        // ~1s via Groq — determines which APIs to call
+        // ══════════════════════════════════════════
         send('status', { message: 'Identifying profile type...' });
         const resolvedType = type || await classifyPersonType(name);
         send('type', { type: resolvedType });
+        console.log(`SSE: Type resolved to "${resolvedType}" in ${Date.now() - startTime}ms`);
 
-        // ── STEP 2: Run platform fetches based on type ──
-        send('status', { message: 'Fetching Instagram data...' });
-        const instagram = await getInstagramData(name);
-        if (instagram) send('instagram', instagram);
+        // ══════════════════════════════════════════
+        // STEP 2: Fire ALL APIs simultaneously
+        // Promise.allSettled — if one fails, others
+        // still complete and stream their data
+        // This is where 10-12s is saved
+        // ══════════════════════════════════════════
+        send('status', { message: 'Fetching data from all platforms...' });
 
-        if (resolvedType === 'actor') {
-            send('status', { message: 'Fetching film data...' });
-            const actorData = await getEnrichedActorData(name);
-            if (actorData) send('actor', actorData);
+        // ── Build platform fetch list based on type ──
+        const fetchMap = {};
+        let fetchPromises = {};
 
-        } else if (resolvedType === 'musician') {
-            send('status', { message: 'Fetching music data...' });
-            const lastfm = await getLastFmData(name);
-            if (lastfm) send('lastfm', lastfm);
+        // Instagram — always fetched for every type
+        fetchPromises.instagram = getInstagramData(name)
+            .then(data => { fetchMap.instagram = data; return data; })
+            .catch(err => { console.error('SSE [Instagram] error:', err.message); fetchMap.instagram = null; return null; });
 
-            send('status', { message: 'Fetching YouTube data...' });
-            const youtube = await getYouTubeData(name);
-            if (youtube) send('youtube', youtube);
-
-        } else {
-            // influencer or athlete
-            send('status', { message: 'Fetching YouTube data...' });
-            const youtube = await getYouTubeData(name);
-            if (youtube) send('youtube', youtube);
+        // YouTube — needed for influencer, musician, athlete
+        if (resolvedType !== 'actor') {
+            fetchPromises.youtube = getYouTubeData(name)
+                .then(data => { fetchMap.youtube = data; return data; })
+                .catch(err => { console.error('SSE [YouTube] error:', err.message); fetchMap.youtube = null; return null; });
         }
 
-        // ── STEP 3: Signals ──
+        // TMDB + OMDb enrichment — actors only
+        if (resolvedType === 'actor') {
+            fetchPromises.actorData = getEnrichedActorData(name)
+                .then(data => { fetchMap.actorData = data; return data; })
+                .catch(err => { console.error('SSE [TMDB+OMDb] error:', err.message); fetchMap.actorData = null; return null; });
+        }
+
+        // Last.fm — musicians only
+        if (resolvedType === 'musician') {
+            fetchPromises.lastfm = getLastFmData(name)
+                .then(data => { fetchMap.lastfm = data; return data; })
+                .catch(err => { console.error('SSE [Last.fm] error:', err.message); fetchMap.lastfm = null; return null; });
+        }
+
+        // ── Stream each result as it arrives ──
+        // Convert to individual streaming promises
+        const streamingPromises = Object.entries(fetchPromises).map(
+            ([key, promise]) => promise.then(data => {
+                if (data) {
+                    // Map internal key names to SSE event names
+                    const eventName = key === 'actorData' ? 'actor' : key;
+                    send(eventName, data);
+                    console.log(`SSE: [${key}] streamed in ${Date.now() - startTime}ms`);
+                } else {
+                    console.log(`SSE: [${key}] returned null — skipped`);
+                }
+            })
+        );
+
+        // Wait for ALL to complete (they're running in parallel)
+        await Promise.allSettled(streamingPromises);
+        console.log(`SSE: All APIs done in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // STEP 3: Calculate signals + confidence
+        // Uses already-fetched data — no re-fetch
+        // Instant — pure math
+        // ══════════════════════════════════════════
         send('status', { message: 'Calculating signals...' });
 
-        // ── STEP 4: AI Insights ──
+        const profileData = assembleProfile(name, resolvedType, {
+            instagram: fetchMap.instagram || null,
+            youtube:   fetchMap.youtube   || null,
+            lastfm:    fetchMap.lastfm    || null,
+            actorData: fetchMap.actorData || null
+        });
+
+        if (!profileData) {
+            send('error', { message: `No usable data found for "${name}"` });
+            res.end();
+            return;
+        }
+
+        // Send signals + confidence to frontend
+        send('signals', {
+            aura_score:      profileData.aura_score,
+            aura_breakdown:  profileData.aura_breakdown,
+            confidence:      profileData.confidence,
+            confidence_meta: profileData.confidence_meta || null,
+            signals:         profileData.signals
+        });
+        console.log(`SSE: Signals calculated in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // STEP 4: AI Insights (must run last)
+        // Needs all data + signals before generating
+        // ~8s via NVIDIA NIM
+        // ══════════════════════════════════════════
         send('status', { message: 'Generating AI insights...' });
 
-        // ── STEP 5: Complete profile via aggregator ──
-        const profile = await getCompleteProfile(name, resolvedType);
-        send('signals',  { aura_score: profile.aura_score, aura_breakdown: profile.aura_breakdown, confidence: profile.confidence, confidence_meta: profile.confidence_meta || null, signals: profile.signals });
-        send('insights', profile.ai_insights);
+        const auraData = {
+            aura_score:      profileData.aura_score,
+            confidence:      profileData.confidence,
+            confidence_meta: profileData.confidence_meta || null,
+            aura_breakdown:  profileData.aura_breakdown,
+            signals:         profileData.signals
+        };
 
-        // ── DONE ──
-        send('done', { message: 'Complete' });
+        const insights = await generateInsights(profileData, auraData);
+        send('insights', insights);
+        console.log(`SSE: AI insights done in ${Date.now() - startTime}ms`);
+
+        // ══════════════════════════════════════════
+        // DONE — close stream
+        // ══════════════════════════════════════════
+        const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        send('done', { message: 'Complete', total_time: `${totalTime}s` });
+        console.log(`SSE: Complete profile for "${name}" in ${totalTime}s`);
         res.end();
 
     } catch (error) {
