@@ -140,6 +140,7 @@ LAST.FM (MUSIC):
 `;
     }
 
+    
     // ─────────────────────────────────────────────
     // Final prompt — structured for maximum quality
     // Clear sections prevent hallucination
